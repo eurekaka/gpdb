@@ -587,7 +587,7 @@ LockAcquire(const LOCKTAG *locktag,
 	{
 		if (Gp_role == GP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
 		{	
-			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
+			if (lockHolderProcPtr == MyProc)
 			{
 				/* Find the guy who should manage our locks */
 				PGPROC * proc = FindProcByGpSessionId(gp_session_id);
@@ -605,19 +605,14 @@ LockAcquire(const LOCKTAG *locktag,
 					lockHolderProcPtr = proc;
 				}
 				else
-					elog(DEBUG1,"Could not find writer proc entry!");
+					elog(ERROR,"Could not find writer proc entry!");
 		
 				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
 						 locktag->locktag_field1, locktag->locktag_field2,
 						 lock_mode_names[lockmode], (int)locktag->locktag_type);
 			}
-				
 		}
 	}
-	
-	
-	
-	
 
 	/*
 	 * Otherwise we've got to mess with the shared lock table.
@@ -788,49 +783,14 @@ LockAcquire(const LOCKTAG *locktag,
 	 * We shouldn't already hold the desired lock; else locallock table is
 	 * broken.
 	 */
-	if (Gp_role != GP_ROLE_UTILITY)
-	{
-		if (proclock->holdMask & LOCKBIT_ON(lockmode))
-		{
-			elog(LOG, "lock %s on object %u/%u/%u is already held",
-				 lock_mode_names[lockmode],
-				 lock->tag.locktag_field1, lock->tag.locktag_field2,
-				 lock->tag.locktag_field3);
-			if (MyProc == lockHolderProcPtr)
-			{
-				elog(LOG, "writer found lock %s on object %u/%u/%u that it didn't know it held",
-						 lock_mode_names[lockmode],
-						 lock->tag.locktag_field1, lock->tag.locktag_field2,
-						 lock->tag.locktag_field3);
-				GrantLock(lock, proclock, lockmode);
-				GrantLockLocal(locallock, owner);
-			}
-			else
-			{
-				if (MyProc != lockHolderProcPtr)
-				{
-					elog(LOG, "reader found lock %s on object %u/%u/%u which is already held by writer",
-						 lock_mode_names[lockmode],
-						 lock->tag.locktag_field1, lock->tag.locktag_field2,
-						 lock->tag.locktag_field3);
-				}
-				lock->nRequested--;
-				lock->requested[lockmode]--;
-			}
-			LWLockRelease(partitionLock);
-			return LOCKACQUIRE_ALREADY_HELD;
-		}
-		
-	}
-	else
 	if (proclock->holdMask & LOCKBIT_ON(lockmode))
 	{
-		elog(LOG, "lock %s on object %u/%u/%u is already held",
-			 lockMethodTable->lockModeNames[lockmode],
+		elog(ERROR, "lock %s on object %u/%u/%u is already held",
+			 lock_mode_names[lockmode],
 			 lock->tag.locktag_field1, lock->tag.locktag_field2,
 			 lock->tag.locktag_field3);
-		Insist(false);
 	}
+	
 	/*
 	 * If lock requested conflicts with locks requested by waiters, must join
 	 * wait queue.	Otherwise, check for conflict with already-held locks.
