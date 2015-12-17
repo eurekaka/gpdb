@@ -607,7 +607,7 @@ LockAcquire(const LOCKTAG *locktag,
 				else
 					elog(DEBUG1,"Could not find writer proc entry!");
 		
-					elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
+				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
 						 locktag->locktag_field1, locktag->locktag_field2,
 						 lock_mode_names[lockmode], (int)locktag->locktag_type);
 			}
@@ -1374,7 +1374,7 @@ WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
  * NB: this does not clean up any locallock object that may exist for the lock.
  */
 void
-RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
+RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode, bool wakeupNeeded)
 {
 	LOCK	   *waitLock = proc->waitLock;
 	PROCLOCK   *proclock = proc->waitProcLock;
@@ -1418,7 +1418,7 @@ RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 	 */
 	CleanUpLock(waitLock, proclock,
 				LockMethods[lockmethodid], hashcode,
-				true);
+				wakeupNeeded);
 }
 
 /*

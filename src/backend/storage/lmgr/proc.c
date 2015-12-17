@@ -659,7 +659,7 @@ LockWaitCancel(void)
 	if (MyProc->links.next != INVALID_OFFSET)
 	{
 		/* We could not have been granted the lock yet */
-		RemoveFromWaitQueue(MyProc, lockAwaited->hashcode);
+		RemoveFromWaitQueue(MyProc, lockAwaited->hashcode, true);
 	}
 	else
 	{
@@ -1047,7 +1047,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	 */
 	if (early_deadlock)
 	{
-		RemoveFromWaitQueue(MyProc, hashcode);
+		RemoveFromWaitQueue(MyProc, hashcode, false);
 		return STATUS_ERROR;
 	}
 
@@ -1310,8 +1310,7 @@ CheckDeadLock(void)
 	}
 	else
 	{
-		RemoveFromWaitQueue(MyProc, 
-							LockTagHashCode(&(MyProc->waitLock->tag)));
+		RemoveFromWaitQueue(MyProc, LockTagHashCode(&(MyProc->waitLock->tag)), true);
 	}
 
 	/*
