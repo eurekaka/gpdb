@@ -1030,13 +1030,30 @@ ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIncrement *inc
 	 *
 	 * NOTE: self-deadlocks will throw (do a non-local return).
 	 */
-	if (ResProcSleep(ExclusiveLock, locallock, incrementSet) != STATUS_OK)
+	PG_TRY();
 	{
-		/*
-		 * We failed as a result of a deadlock, see CheckDeadLock(). Quit now.
-		 */
-		LWLockRelease(partitionLock);
-		DeadLockReport();
+		if (ResProcSleep(ExclusiveLock, locallock, incrementSet) != STATUS_OK)
+		{
+			/*
+			 * We failed as a result of a deadlock, see CheckDeadLock(). Quit now.
+			 */
+			awaitedLock = NULL;
+			LWLockRelease(partitionLock);
+			DeadLockReport();
+		}
+	}
+	PG_CATCH();
+	{
+		awaitedLock = NULL;
+		/* Report change to non-waiting status */
+		if (update_process_title)
+		{
+			set_ps_display(new_status, false);
+			pfree(new_status);
+		}
+		pgstat_report_waiting(PGBE_WAITING_NONE);
+
+		PG_RE_THROW();
 	}
 
 	awaitedLock = NULL;
