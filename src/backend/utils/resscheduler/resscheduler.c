@@ -1078,7 +1078,7 @@ ResHandleUtilityStmt(Portal portal, Node *stmt)
 		{
 			portal->status = PORTAL_QUEUE;
 
-			portal->releaseResLock = ResLockUtilityPortal(portal, resQueue->ignorecostlimit);
+			portal->holdingResLock = ResLockUtilityPortal(portal, resQueue->ignorecostlimit);
 		}
 		portal->status = PORTAL_ACTIVE;
 	}
