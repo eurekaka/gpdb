@@ -606,13 +606,13 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	incrementSet = ResIncrementFind(&portalTag);
 	if (!incrementSet)
 	{
-        elog(DEBUG1, "Resource queue %d: increment not found on unlock", locktag->locktag_field1);
-        if (proclock->nLocks == 0)
+		elog(DEBUG1, "Resource queue %d: increment not found on unlock", locktag->locktag_field1);
+		if (proclock->nLocks == 0)
 		{
-            RemoveLocalLock(locallock);
+			RemoveLocalLock(locallock);
 		}
-
-		ResCleanUpLock(lock, proclock, hashcode, true);
+		/* no need to do the wakeups */
+		ResCleanUpLock(lock, proclock, hashcode, false);
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
 		return false;			
@@ -1070,8 +1070,6 @@ ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIncrement *inc
 
 	/*
 	 * Now sleep.
-	 *
-	 * NOTE: self-deadlocks will throw (do a non-local return).
 	 */
 	PG_TRY();
 	{
