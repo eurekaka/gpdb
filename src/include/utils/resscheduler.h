@@ -142,7 +142,6 @@ extern ResQueue			GetResQueueFromLock(LOCK *lock);
 extern void				ResProcLockRemoveSelfAndWakeup(LOCK *lock);
 extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
-extern bool				ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incSet);
 
 extern ResPortalIncrement	*ResIncrementFind(ResPortalTag *portaltag);
 

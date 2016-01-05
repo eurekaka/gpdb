@@ -46,6 +46,7 @@ static void ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncremen
 
 static void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 static bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
+static bool ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, ResQueue queue);
 
 
 /*
@@ -290,7 +291,14 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	PG_CATCH();
 	{
 		/* Something wrong happened - our RQ is gone. Release all locks and clean out */
-		LWLockReleaseAll();
+		lock->nRequested--;
+		lock->requested[lockmode]--;
+		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
+
+		ResCleanUpLock(lock, proclock, hashcode, false);
+
+		LWLockRelease(ResQueueLock);
+		LWLockRelease(partitionLock);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -330,6 +338,12 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 	incrementSet = ResIncrementAdd(incrementSet, proclock, owner);
 	if (!incrementSet)
 	{
+		lock->nRequested--;
+		lock->requested[lockmode]--;
+		Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
+
+		ResCleanUpLock(lock, proclock, hashcode, false);
+
 		LWLockRelease(ResQueueLock);
 		LWLockRelease(partitionLock);
 		ereport(ERROR,
@@ -397,8 +411,37 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 
 		/*
 		 * The requested lock will exhaust the limit for this resource queue,
-		 * so must wait.
+		 * so must wait. Before waiting, check the status of self deadlock.
 		 */
+		if (ResCheckSelfDeadLock(lock, proclock, incrementSet, queue))
+		{
+
+			ResPortalTag		portalTag;
+
+			/* Adjust the counters as we no longer want this lock. */
+			lock->nRequested--;
+			lock->requested[lockmode]--;
+			Assert((lock->nRequested >= 0) && (lock->requested[lockmode] >= 0));
+
+			/*
+ 		 	 * it is impossible to have proclock->nLocks == 0 here, so no need to call
+ 	 	 	 * RemoveLocalLock and ResCleanUpLock.
+ 	 	 	 */
+			Assert(proclock->nLocks > 0);
+
+			/* Kill off the increment. */
+			MemSet(&portalTag, 0, sizeof(ResPortalTag));
+			portalTag.pid = incrementSet->pid;
+			portalTag.portalId = incrementSet->portalId;
+
+			ResIncrementRemove(&portalTag);
+
+			LWLockRelease(ResQueueLock);
+			LWLockRelease(partitionLock);
+			ereport(ERROR,
+					(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
+					 errmsg("deadlock detected, locking against self")));
+		}
 
 		/* Set bitmask of locks this process already holds on this object. */
 		MyProc->heldLocks = proclock->holdMask; /* Do we need to do this?*/
@@ -1276,10 +1319,10 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
  * we need to signal that a self deadlock is about to occurr - modulo some
  * footwork for overcommit-able queues.
  */
-bool
-ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet)
+static bool
+ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, ResQueue queue)
 {
-	ResQueue		queue;
+	LOCKMODE		lockmode = ExclusiveLock;
 	ResLimit		limits;
 	int				i;
 	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
@@ -1289,11 +1332,9 @@ ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increme
 	bool			memoryThesholdOvercommitted = false;
 	bool			result = false;
 
-	/* Get the resource queue lock before checking the increments.*/
-	LWLockAcquire(ResQueueLock, LW_EXCLUSIVE);
+	Assert(LWLockHeldExclusiveByMe(ResQueueLock));
 
 	/* Get the queue for this lock.*/
-	queue = GetResQueueFromLock(lock);
 	limits = queue->limits;
 
 	/* Get the increment totals and number of portals for this queue. */
@@ -1356,29 +1397,6 @@ ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *increme
 	{
 		result = false;
 	}
-
-	if (result)
-	{
-		/*
-		 * We're about to abort out of a partially completed lock
-		 * acquisition.
-		 *
-		 * In order to allow our ref-counts to figure out how to
-		 * clean things up we're going to "grant" the lock, which
-		 * will immediately be cleaned up when our caller throws
-		 * an ERROR.
-		 */
-		if (lock->nRequested > lock->nGranted)
-		{
-			/* we're no longer waiting. */
-			pgstat_report_waiting(PGBE_WAITING_NONE);
-			ResGrantLock(lock, proclock);
-			ResLockUpdateLimit(lock, proclock, incrementSet, true, true);
-		}
-		/* our caller will throw an ERROR. */
-	}
-
-	LWLockRelease(ResQueueLock);
 
 	return result;
 }
