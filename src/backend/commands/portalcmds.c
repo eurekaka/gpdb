@@ -373,7 +373,6 @@ PortalCleanupHelper(Portal portal, volatile int *cleanupstate)
 	 * If resource scheduling is enabled, release the resource lock. 
 	 */
         ResUnLockPortal(portal);
-	portal->holdingResLock = false;
 
 	/**
 	 * Clean up backend's backoff entry

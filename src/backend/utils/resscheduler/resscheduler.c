@@ -857,6 +857,8 @@ ResUnLockPortal(Portal portal)
 		}
 	}
 
+	portal->holdingResLock = false;
+
 	return;
 }
 
