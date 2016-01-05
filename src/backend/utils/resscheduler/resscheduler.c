@@ -850,7 +850,7 @@ ResUnLockPortal(Portal portal)
 		ResLockRelease(&tag, portal->portalId);
 
 		/* Count holdable cursors.*/
-		if (portal->cursorOptions & CURSOR_OPT_HOLD)
+		if ((portal->cursorOptions & CURSOR_OPT_HOLD) && portal->holdingResLock)
 		{
 			Assert(numHoldPortals > 0);
 			numHoldPortals--;

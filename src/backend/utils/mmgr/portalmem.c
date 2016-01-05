@@ -380,6 +380,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 	PortalHashTableDelete(portal);
 
         ResUnLockPortal(portal);
+        portal->holdingResLock = false;
 
 	/* let portalcmds.c clean up the state it knows about */
 	if (portal->cleanup)
@@ -862,9 +863,8 @@ AtExitCleanup_ResPortals(void)
 	{
 		Portal		portal = hentry->portal;
 
-		portal->holdingResLock = false;
 		ResUnLockPortal(portal);
-
+		portal->holdingResLock = false;
 	}
 }
 
