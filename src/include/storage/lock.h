@@ -358,8 +358,6 @@ typedef struct PROCLOCK
 	SHM_QUEUE	procLink;		/* list link in PGPROC's list of proclocks */
 	int			nLocks;			/* total number of times lock is held by 
 								   this process, used by resource scheduler */
-	SHM_QUEUE	portalLinks;	/* list of ResPortalIncrements for this 
-								   proclock, used by resource scheduler */
 } PROCLOCK;
 
 #define PROCLOCK_LOCKMETHOD(proclock) \

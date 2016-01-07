@@ -264,7 +264,6 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
 		SHMQueueInsertBefore(&(MyProc->myProcLocks[partition]), &proclock->procLink);
 		proclock->nLocks = 0;
-		SHMQueueInit(&(proclock->portalLinks));
 	}
 	else
 	{
@@ -1485,7 +1484,6 @@ ResIncrementAdd(ResPortalIncrement *incSet, PROCLOCK *proclock, ResourceOwner ow
 		{
 			incrementSet->increments[i] = incSet->increments[i];
 		}
-		SHMQueueInsertBefore(&proclock->portalLinks, &incrementSet->portalLink);
 	}
 	else
 	{
@@ -1550,8 +1548,6 @@ ResIncrementRemove(ResPortalTag *portaltag)
 	{
 		return false;
 	}
-
-	SHMQueueDelete(&incrementSet->portalLink);
 
 	return true;
 }

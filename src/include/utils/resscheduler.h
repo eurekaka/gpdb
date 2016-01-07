@@ -90,8 +90,6 @@ typedef struct ResPortalIncrement
 	ResourceOwner	owner;				/* Resource Owner. */
 	bool		isHold;					/* Holdable cursor? */
 	bool		isCommitted;			/* 1st commit complete? */
-	SHM_QUEUE	portalLink;				/* List link in PROCLOCKS list 
-										   of ResPortalIncrements. */
 	/* The increments - use Cost as it has a suitably large range. */
 	Cost		increments[NUM_RES_LIMIT_TYPES];
 } ResPortalIncrement;
