@@ -1746,6 +1746,9 @@ ResLockWaitCancel(void)
 
 	if (lockAwaited != NULL)
 	{
+		/* Turn off the deadlock timer, if it's still running */
+		disable_sig_alarm(false);
+
 		/* Unlink myself from the wait queue, if on it  */
 		partitionLock = LockHashPartition(lockAwaited->hashcode);
 		LWLockAcquire(partitionLock, LW_EXCLUSIVE);
@@ -1767,9 +1770,18 @@ ResLockWaitCancel(void)
 	}
 
 	/*
-	 * Reset the proc wait semaphore to zero. This is necessary in the
-	 * scenario where someone else granted us the lock we wanted before we
-	 * were able to remove ourselves from the wait-list.
+	 * We used to do PGSemaphoreReset() here to ensure that our proc's wait
+	 * semaphore is reset to zero.	This prevented a leftover wakeup signal
+	 * from remaining in the semaphore if someone else had granted us the lock
+	 * we wanted before we were able to remove ourselves from the wait-list.
+	 * However, now that ResProcSleep loops until waitStatus changes, a leftover
+	 * wakeup signal isn't harmful, and it seems not worth expending cycles to
+	 * get rid of a signal that most likely isn't there.
+	 */
+
+	/*
+	 * Return true even if we were kicked off the lock before we were able to
+	 * remove ourselves.
 	 */
 	return;
 }
