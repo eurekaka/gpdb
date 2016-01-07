@@ -42,7 +42,7 @@ static bool ResIncrementRemove(ResPortalTag *portaltag);
 
 static void ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIncrement *incrementSet);
 
-static void ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, bool increment, bool inError);
+static void ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, bool increment);
 
 static void				ResGrantLock(LOCK *lock, PROCLOCK *proclock);
 static bool				ResUnGrantLock(LOCK *lock, PROCLOCK *proclock);
@@ -396,7 +396,7 @@ ResLockAcquire(LOCKTAG *locktag, ResPortalIncrement *incrementSet)
 		 * queue, so record this in the local lock hash, and grant it.
 		 */
 		ResGrantLock(lock, proclock);
-		ResLockUpdateLimit(lock, proclock, incrementSet, true, false);
+		ResLockUpdateLimit(lock, proclock, incrementSet, true);
 
 		LWLockRelease(ResQueueLock);
 
@@ -621,7 +621,7 @@ ResLockRelease(LOCKTAG *locktag, uint32 resPortalId)
 	 * Un-grant the lock.
 	 */
 	ResUnGrantLock(lock, proclock);
-	ResLockUpdateLimit(lock, proclock, incrementSet, false, false);
+	ResLockUpdateLimit(lock, proclock, incrementSet, false);
 
 	/*
 	 * Perform clean-up, waking up any waiters!
@@ -823,7 +823,7 @@ ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementS
  *	this function is called.
  */
 void
-ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, bool increment, bool inError)
+ResLockUpdateLimit(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, bool increment)
 {
 	ResQueue 		queue;
 	ResLimit		limits;
@@ -1190,7 +1190,7 @@ ResProcLockRemoveSelfAndWakeup(LOCK *lock)
 		if (status == STATUS_OK)
 		{
 			ResGrantLock(lock, (PROCLOCK *) proc->waitProcLock);
-			ResLockUpdateLimit(lock, (PROCLOCK *) proc->waitProcLock, incrementSet, true, false);
+			ResLockUpdateLimit(lock, (PROCLOCK *) proc->waitProcLock, incrementSet, true);
 
 			proc = ResProcWakeup(proc, STATUS_OK);
 		}
