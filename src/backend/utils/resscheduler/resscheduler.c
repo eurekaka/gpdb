@@ -814,13 +814,20 @@ ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit)
 			 * Perfmon related stuff: clean up if we got cancelled
 			 * while waiting.
 			 */
-
+			if (gp_enable_gpperfmon && qDesc->gpmon_pkt)
+			{			
+				gpmon_qlog_query_error(qDesc->gpmon_pkt);
+				pfree(qDesc->gpmon_pkt);
+				qDesc->gpmon_pkt = NULL;
+			}
 			portal->queueId = InvalidOid;
 			portal->portalId = INVALID_PORTALID;
 
 			PG_RE_THROW();
 		}
 		PG_END_TRY();
+
+		Assert((lockResult != LOCKACQUIRE_NOT_AVAIL) && !(portal->cursorOptions & CURSOR_OPT_HOLD));
 	}
 	return returnReleaseOk;
 }
@@ -1076,6 +1083,9 @@ ResHandleUtilityStmt(Portal portal, Node *stmt)
 		Assert(resQueue);
 		int numSlots = (int) ceil(resQueue->limits[RES_COUNT_LIMIT].threshold_value);
 
+		/* There can actually have a problem when there is a concurrent ALTER RESOURCE QUEUE, but
+ 		 * since concurrent ALTER RESOURCE QUEUE is a known cause for temporary inconsistent resource
+ 		 * queue status, so it should be fine here */
 		if (numSlots >= 1) /* statement limit exists */
 		{
 			portal->status = PORTAL_QUEUE;

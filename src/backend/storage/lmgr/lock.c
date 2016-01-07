@@ -771,6 +771,19 @@ LockAcquire(const LOCKTAG *locktag,
 	}
 
 	/*
+	 * We shouldn't already hold the desired lock; else locallock table is
+	 * broken.
+	 */
+	if (proclock->holdMask & LOCKBIT_ON(lockmode))
+	{
+		LWLockRelease(partitionLock);
+		elog(ERROR, "lock %s on object %u/%u/%u is already held, locallock is corrupted",
+			 lock_mode_names[lockmode],
+			 lock->tag.locktag_field1, lock->tag.locktag_field2,
+			 lock->tag.locktag_field3);
+	}
+
+	/*
 	 * lock->nRequested and lock->requested[] count the total number of
 	 * requests, whether granted or waiting, so increment those immediately.
 	 * The other counts don't increment till we get the lock.
@@ -778,18 +791,6 @@ LockAcquire(const LOCKTAG *locktag,
 	lock->nRequested++;
 	lock->requested[lockmode]++;
 	Assert((lock->nRequested > 0) && (lock->requested[lockmode] > 0));
-
-	/*
-	 * We shouldn't already hold the desired lock; else locallock table is
-	 * broken.
-	 */
-	if (proclock->holdMask & LOCKBIT_ON(lockmode))
-	{
-		elog(ERROR, "lock %s on object %u/%u/%u is already held",
-			 lock_mode_names[lockmode],
-			 lock->tag.locktag_field1, lock->tag.locktag_field2,
-			 lock->tag.locktag_field3);
-	}
 	
 	/*
 	 * If lock requested conflicts with locks requested by waiters, must join
