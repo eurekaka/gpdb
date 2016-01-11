@@ -810,16 +810,6 @@ ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit)
 			/* If we had acquired the resource queue lock, release it and clean up */
 			ResLockRelease(&tag, portal->portalId);
 
-			/*
-			 * Perfmon related stuff: clean up if we got cancelled
-			 * while waiting.
-			 */
-			if (gp_enable_gpperfmon && qDesc->gpmon_pkt)
-			{			
-				gpmon_qlog_query_error(qDesc->gpmon_pkt);
-				pfree(qDesc->gpmon_pkt);
-				qDesc->gpmon_pkt = NULL;
-			}
 			portal->queueId = InvalidOid;
 			portal->portalId = INVALID_PORTALID;
 

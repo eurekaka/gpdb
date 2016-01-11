@@ -1095,6 +1095,7 @@ ResWaitOnLock(LOCALLOCK *locallock, ResourceOwner owner, ResPortalIncrement *inc
 
 		PG_RE_THROW();
 	}
+	PG_END_TRY();
 
 	awaitedLock = NULL;
 
@@ -1319,7 +1320,6 @@ ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 static bool
 ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incrementSet, ResQueue queue)
 {
-	LOCKMODE		lockmode = ExclusiveLock;
 	ResLimit		limits;
 	int				i;
 	Cost			incrementTotals[NUM_RES_LIMIT_TYPES];
@@ -1767,7 +1767,8 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 /**
  * This copies out the current state of resource queues.
  */
-static void BuildQueueStatusContext(QueueStatusContext *fctx)
+static void
+BuildQueueStatusContext(QueueStatusContext *fctx)
 {
 	LWLockId partitionLock;
 	int num_calls = 0;
