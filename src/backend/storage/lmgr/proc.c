@@ -1711,7 +1711,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
    		elog(FATAL, "could not set timer for (resource lock) process wakeup");
 
 	/*
-	 * Sleep on the semaphore.
+	 * Sleep on the semaphore. see ProcSleep's comments for why we check the wait status here.
 	 */
 	do
 	{
