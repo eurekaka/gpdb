@@ -263,7 +263,7 @@ bool                            /* returns true if segdbDesc had err info */
 cdbdisp_mergeConnectionErrors(CdbDispatchResult                *dispatchResult,
                               struct SegmentDatabaseDescriptor *segdbDesc)
 {
-    if (!segdbDesc)
+    if (segdbDesc == NULL)
         return false;
     if (segdbDesc->errcode == 0 &&
         segdbDesc->error_message.len == 0)

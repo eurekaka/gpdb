@@ -277,7 +277,7 @@ void cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 	Assert(gp && gp->size > 0);
 	Assert(dispatchResults && dispatchResults->resultArray);
 
-	if (dispatchResults->writer_gang)
+	if (dispatchResults->writer_gang) /* writer_gang could be NULL if this is an extended query. */
 	{
 		/* Are we dispatching to the writer-gang when it is already busy ? */
 		if (gp == dispatchResults->writer_gang)
@@ -320,7 +320,8 @@ void cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 	max_threads = getMaxThreadsPerGang();
 	if (ds->dispatchThreads->dispatchCommandParmsArSize < (ds->dispatchThreads->threadCount + max_threads))
 	{
-		elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d new threadcount %d",
+		elog(ERROR, "Attempted to reallocate dispatchCommandParmsAr while other threads still running size %d,
+			 new threadcount %d",
 			 ds->dispatchThreads->dispatchCommandParmsArSize, ds->dispatchThreads->threadCount + max_threads);
 	}
 
@@ -353,16 +354,14 @@ void cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 
 		if (qeResult == NULL)
 		{
-			/* writer_gang could be NULL if this is an extended query. */
-			if (dispatchResults->writer_gang)
-				dispatchResults->writer_gang->dispatcherActive = true;
 			elog(FATAL, "could not allocate resources for segworker communication");
 		}
 
-		/* Transfer any connection errors from segdbDesc. */
-		if (segdbDesc->errcode ||
-			segdbDesc->error_message.len)
-			cdbdisp_mergeConnectionErrors(qeResult, segdbDesc);
+		/*
+		 * Transfer any connection errors from segdbDesc to dispatchResult, and
+		 * reset errors in segdbDesc.
+		 */
+		cdbdisp_mergeConnectionErrors(qeResult, segdbDesc);
 
 		parmsIndex = gp_connections_per_thread == 0 ? 0 : segdbs_in_thread_pool / gp_connections_per_thread;
 		pParms = ds->dispatchThreads->dispatchCommandParmsAr + ds->dispatchThreads->threadCount + parmsIndex;
@@ -4331,7 +4330,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms *pParms,
  * all DispatchCommandQueryParms in this dispatcher state.
  *
  * For now, there's only one field (localSlice) which is different to each
- * dispatcher thread, we set it it later.
+ * dispatcher thread, we set it later.
  *
  * Also, we free the DispatchCommandQueryParms memory.
  */
