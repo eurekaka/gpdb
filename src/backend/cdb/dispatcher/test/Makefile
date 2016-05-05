@@ -10,14 +10,20 @@ UT_LIB_FLAGS=-l cmocka -L /usr/local/lib
 OBJS = fe-connect.o fe-auth.o fe-exec.o fe-misc.o fe-protocol3.o pqexpbuffer.o ip.o md5.o wchar.o \
 	   stringinfo.o thread.o pgstrcasecmp.o noblock.o strlcpy.o inet_net_ntop.o
 
-UT_OBJS = cdbdisp_fake.o cdbdispatchresult.o cdbdisp_test.o $(OBJS)
+CDBDISP_OBJS = cdbdisp_fake.o cdbdispatchresult.o cdbdisp_test.o $(OBJS)
+CDBDISPATCHRESULT_OBJS = cdbdisp_fake.o cdbdispatchresult_test.o cdbdisp.o $(OBJS)
 
 DISPATCHER_OBJS = $(OBJS) dispatcher.o cdbdisp.o cdbdisp_fake.o cdbdispatchresult.o 
 
-cdbdisp_test: $(UT_OBJS)
+cdbdisp_test: $(CDBDISP_OBJS)
 	$(CC) -o $@ $^ $(CFLAGS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS) $(UT_LIB_FLAGS) -Wl,--wrap=largestGangsize
-test: cdbdisp_test
-	./cdbdisp_test
+
+cdbdispatchresult_test: $(CDBDISPATCHRESULT_OBJS)
+	$(CC) -o $@ $^ $(CFLAGS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS) $(UT_LIB_FLAGS) \
+		-Wl,--wrap=createPQExpBuffer,--wrap=cdbconn_setSliceIndex
+
+test: cdbdisp_test cdbdispatchresult_test
+	./cdbdisp_test && ./cdbdispatchresult_test
 
 dispatcher: $(DISPATCHER_OBJS)
 	$(CC) -o $@ $^ $(CFLAGS) $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
@@ -59,4 +65,6 @@ inet_net_ntop.c: $(top_srcdir)/src/port/inet_net_ntop.c
 	rm -f $@ && $(LN_S) $< .
 
 clean:
-	rm -f *.o && find . -type l -delete && rm -f dispatcher cdbdisp_test
+	rm -f *.o && find . -type l -delete \
+		&& rm -f dispatcher cdbdisp_test \
+		&& rm -f cdbdispatchresult_test

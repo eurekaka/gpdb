@@ -7,12 +7,18 @@
 
 extern Gang *mockCreateGang(GangType type, int gangId, int size, char *hostip, uint16 portStart);
 
-int main()
+int main(int argc, char *argv[])
 {
+	if (argc != 2)
+	{
+		printf("must supply a param for gang size\n");
+		return 1;
+	}
+
 	main_tid = pthread_self();
 
 	int i = 0;
-	int gangSize = 100;
+	int gangSize = atoi(argv[1]);
 	struct CdbDispatcherState ds = {0};
 
 
