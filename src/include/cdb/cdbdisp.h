@@ -94,60 +94,6 @@ typedef enum DispatchWaitMode
 	DISPATCH_WAIT_CANCEL			/* send query cancel */
 } DispatchWaitMode;
 
-/*
- * Parameter structure for the DispatchCommand threads
- */
-typedef struct DispatchCommandParms
-{
-	char		*query_text;
-	int			query_text_len;
-
-	/*
-	 * db_count: The number of segdbs that this thread is responsible
-	 * for dispatching the command to.
-	 * Equals the count of segdbDescPtrArray below.
-	 */
-	int			db_count;
-	
-
-	/*
-	 * dispatchResultPtrArray: Array[0..db_count-1] of CdbDispatchResult*
-	 * Each CdbDispatchResult object points to a SegmentDatabaseDescriptor
-	 * that this thread is responsible for dispatching the command to.
-	 */
-	struct CdbDispatchResult **dispatchResultPtrArray;
-
-	/*
-	 * Depending on this mode, we may send query cancel or query finish
-	 * message to QE while we are waiting it to complete.  NONE means
-	 * we expect QE to complete without any instruction.
-	 */
-	volatile DispatchWaitMode waitMode;
-
-	/*
-	 * pollfd supports for libpq
-	 */
-	int				nfds;
-	struct pollfd	*fds;
-	
-	/*
-	 * The pthread_t thread handle.
-	 */
-	pthread_t	thread;
-	bool		thread_valid;
-	
-}	DispatchCommandParms;
-
-/*
- * Keeps state of all the dispatch command threads.
- */
-typedef struct CdbDispatchCmdThreads
-{
-	struct DispatchCommandParms *dispatchCommandParmsAr;
-	int	dispatchCommandParmsArSize;
-	int	threadCount;
-}   CdbDispatchCmdThreads;
-
 typedef struct CdbDispatchDirectDesc
 {
 	bool directed_dispatch;
@@ -447,8 +393,10 @@ void cdbdisp_waitThreads(void);
 /*--------------------------------------------------------------------*/
 
 void
-cdbdisp_makeDispatcherState(CdbDispatcherState *ds, int maxResults,
-                int maxSlices, bool cancelOnError);
+cdbdisp_makeDispatcherState(CdbDispatcherState *ds,
+							int maxResults,
+							int maxSlices,
+							bool cancelOnError);
 
 void cdbdisp_destroyDispatcherState(CdbDispatcherState *ds);
 
