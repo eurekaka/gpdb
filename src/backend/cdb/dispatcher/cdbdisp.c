@@ -70,6 +70,16 @@
 #include "utils/builtins.h"
 #include "utils/portal.h"
 
+/*
+ * We need an array describing the relationship between a slice and
+ * the number of "child" slices which depend on it.
+ */
+typedef struct {
+	int sliceIndex;
+	int children;
+	Slice *slice;
+} sliceVec;
+
 #define DISPATCH_WAIT_TIMEOUT_SEC 2
 extern bool Test_print_direct_dispatch_info;
 
@@ -85,13 +95,14 @@ extern pthread_t main_tid;
  */
 CdbDispatchDirectDesc default_dispatch_direct_desc = {false, 0, {0}};
 
+
 /*
  * Static Helper functions
  */
 static void *thread_DispatchCommand(void *arg);
-static void thread_DispatchOut(DispatchCommandParms		*pParms);
-static void thread_DispatchWait(DispatchCommandParms	*pParms);
-static void thread_DispatchWaitSingle(DispatchCommandParms		*pParms);
+static void thread_DispatchOut(DispatchCommandParms *pParms);
+static void thread_DispatchWait(DispatchCommandParms *pParms);
+static void thread_DispatchWaitSingle(DispatchCommandParms *pParms);
 
 static void
 CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
@@ -100,61 +111,48 @@ CdbCheckDispatchResultInt(struct CdbDispatcherState *ds,
 						  DispatchWaitMode waitMode);
 
 static bool
-shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dispatchResult);
+shouldStillDispatchCommand(DispatchCommandParms *pParms,
+						   CdbDispatchResult * dispatchResult);
 
 static void
 handlePollError(DispatchCommandParms *pParms,
-                  int                   db_count,
-                  int                   sock_errno);							
+				int db_count,
+				int sock_errno);
 static void
-handlePollTimeout(DispatchCommandParms   *pParms,
-                    int                     db_count,
-                    int                    *timeoutCounter,
-                    bool                    useSampling);
+handlePollTimeout(DispatchCommandParms *pParms,
+				  int db_count,
+				  int *timeoutCounter,
+				  bool useSampling);
 
 static void
-CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbDispatchResult * dispatchResult);
+CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc,
+									  CdbDispatchResult * dispatchResult);
 
-/* returns true if command complete */
 static bool
-processResults(CdbDispatchResult   *dispatchResult);
+processResults(CdbDispatchResult *dispatchResult);
 
 static int getMaxThreadsPerGang(void);
-static CdbDispatchCmdThreads *
-cdbdisp_makeDispatchThreads(int maxThreads);
+
+static CdbDispatchCmdThreads *cdbdisp_makeDispatchThreads(int maxThreads);
+
 static CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
-		bool cancelOnError);
+cdbdisp_makeDispatchResults(int resultCapacity,
+							int sliceCapacity,
+							bool cancelOnError);
 
 static char *
-dupQueryTextAndSetSliceId(MemoryContext cxt, char *queryText, int len,
-		int sliceId);
+dupQueryTextAndSetSliceId(MemoryContext cxt,
+						  char *queryText,
+						  int len,
+						  int sliceId);
+
 static void
 dispatchCommand(CdbDispatchResult *dispatchResult,
-		const char *query_text, int query_text_len);
+				const char *query_text,
+				int query_text_len);
 
-/*
- * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
- * internal dispatcher structures. See MPP-6253 and MPP-6579.
- */
-static void
-cdbdisp_clearGangActiveFlag(CdbDispatcherState *ds)
-{
-	if (ds && ds->primaryResults && ds->primaryResults->writer_gang)
-	{
-		ds->primaryResults->writer_gang->dispatcherActive = false;
-	}
-}
+static void cdbdisp_clearGangActiveFlag(CdbDispatcherState *ds);
 
-/*
- * We need an array describing the relationship between a slice and
- * the number of "child" slices which depend on it.
- */
-typedef struct {
-	int sliceIndex;
-	int children;
-	Slice *slice;
-} sliceVec;
 
 /*
  * Counter to indicate there are some dispatch threads running.  This will
@@ -193,8 +191,10 @@ static volatile int32 RunningThreadCount = 0;
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
 void
-cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
-		int sliceIndex, CdbDispatchDirectDesc *disp_direct)
+cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
+					   struct Gang *gp,
+					   int sliceIndex,
+					   CdbDispatchDirectDesc *disp_direct)
 {
 	struct CdbDispatchResults	*dispatchResults = ds->primaryResults;
 	SegmentDatabaseDescriptor	*segdbDesc;
@@ -385,7 +385,20 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 
 	ds->dispatchThreads->threadCount += newThreads;
 	elog(DEBUG4, "dispatchToGang: Total threads now %d", ds->dispatchThreads->threadCount);
-}	/* cdbdisp_dispatchToGang */
+}
+
+/*
+ * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
+ * internal dispatcher structures. See MPP-6253 and MPP-6579.
+ */
+static void
+cdbdisp_clearGangActiveFlag(CdbDispatcherState *ds)
+{
+	if (ds && ds->primaryResults && ds->primaryResults->writer_gang)
+	{
+		ds->primaryResults->writer_gang->dispatcherActive = false;
+	}
+}
 
 /*
  * CdbCheckDispatchResult:
@@ -1448,14 +1461,17 @@ shouldStillDispatchCommand(DispatchCommandParms *pParms, CdbDispatchResult * dis
 	return true;
 }	/* shouldStillDispatchCommand */
 
-/* Helper function to thread_DispatchCommand that actually kicks off the
+/*
+ * Helper function to thread_DispatchCommand that actually kicks off the
  * command on the libpq connection.
  *
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
-static void dispatchCommand(CdbDispatchResult *dispatchResult,
-		const char *query_text, int query_text_len)
+static void
+dispatchCommand(CdbDispatchResult *dispatchResult,
+				const char *query_text,
+				int query_text_len)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1503,7 +1519,7 @@ static void dispatchCommand(CdbDispatchResult *dispatchResult,
 	 * was dispatched -- in order to check for a lost connection
 	 * or any other errors that libpq might have in store for us.
 	 */
-}	/* dispatchCommand */
+}
 
 /* Helper function to thread_DispatchCommand that handles errors that occur
  * during the poll() call.
@@ -1782,7 +1798,10 @@ CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc, CdbD
 	}
 }
 
-bool							/* returns true if command complete */
+/*
+ * returns true if command complete
+ */
+bool
 processResults(CdbDispatchResult *dispatchResult)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
@@ -2040,8 +2059,9 @@ cdbdisp_makeDispatchThreads(int maxThreads)
  * memory context.
  */
 static CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
-		bool cancelOnError)
+cdbdisp_makeDispatchResults(int resultCapacity,
+							int sliceCapacity,
+							bool cancelOnError)
 {
 	CdbDispatchResults *results = palloc0(sizeof(*results));
 	int nbytes = resultCapacity * sizeof(results->resultArray[0]);
@@ -2062,7 +2082,7 @@ cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
 	}
 
 	return results;
-} /* cdbdisp_makeDispatchResults */
+}
 
 /*
  * Allocate memory and initialize CdbDispatcherState.
