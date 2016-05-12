@@ -73,13 +73,13 @@ typedef struct CdbDispatchCmdThreads
 struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 
 void
-cdbdisp_dispatchToGang_byThreads(struct CdbDispatcherState *ds,
-                       struct Gang					*gp,
-                       int							sliceIndex,
-                       CdbDispatchDirectDesc		*direct);
+cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
+								struct Gang *gp,
+								int sliceIndex,
+								CdbDispatchDirectDesc *direct);
 
 void
-CdbCheckDispatchThreadsResults(struct CdbDispatcherState *ds,
+CdbCheckDispatchResults_internal(struct CdbDispatcherState *ds,
                                                   struct SegmentDatabaseDescriptor *** failedSegDB,
                                                   int *numOfFailed,
                                                   DispatchWaitMode waitMode);

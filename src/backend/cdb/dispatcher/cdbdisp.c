@@ -95,7 +95,11 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
 		}
 	}
 
-	cdbdisp_dispatchToGang_byThreads(ds, gp, sliceIndex, disp_direct);
+	/*
+	 * WIP: will use a function pointer for implementation later, currently just use an internal function to move dispatch
+	 * thread related code into a separate file.
+	 */
+	cdbdisp_dispatchToGang_internal(ds, gp, sliceIndex, disp_direct);
 }
 
 /*
@@ -112,7 +116,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 {
 	PG_TRY();
 	{
-		CdbCheckDispatchThreadsResults(ds, NULL, NULL, waitMode);
+		CdbCheckDispatchResults_internal(ds, NULL, NULL, waitMode);
 	}
 	PG_CATCH();
 	{

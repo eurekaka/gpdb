@@ -1181,9 +1181,10 @@ shouldStillDispatchCommand(DispatchCommandParms * pParms,
 }	/* shouldStillDispatchCommand */
 
 void
-cdbdisp_dispatchToGang_byThreads(struct CdbDispatcherState *ds,
-								 struct Gang *gp, int sliceIndex,
-								 CdbDispatchDirectDesc * disp_direct)
+cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
+								struct Gang *gp,
+								int sliceIndex,
+								CdbDispatchDirectDesc * disp_direct)
 {
 	struct CdbDispatchResults *dispatchResults = ds->primaryResults;
 	SegmentDatabaseDescriptor *segdbDesc;
@@ -1382,9 +1383,9 @@ cdbdisp_dispatchToGang_byThreads(struct CdbDispatcherState *ds,
 }	/* cdbdisp_dispatchToGang */
 
 void
-CdbCheckDispatchThreadsResults(struct CdbDispatcherState *ds,
-							   struct SegmentDatabaseDescriptor ***failedSegDB,
-							   int *numOfFailed, DispatchWaitMode waitMode)
+CdbCheckDispatchResults_internal(struct CdbDispatcherState *ds,
+								 struct SegmentDatabaseDescriptor ***failedSegDB,
+								 int *numOfFailed, DispatchWaitMode waitMode)
 {
 	int			i;
 	int			j;
@@ -1722,7 +1723,7 @@ processResults(CdbDispatchResult * dispatchResult)
 
 	return false;				/* we must keep on monitoring this socket */
 
-  connection_error:
+connection_error:
 	msg = PQerrorMessage(segdbDesc->conn);
 
 	if (msg)
