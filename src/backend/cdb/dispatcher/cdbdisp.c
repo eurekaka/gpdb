@@ -13,7 +13,7 @@
 #include "postgres.h"
 #include <limits.h>
 
-#include "storage/ipc.h"		/* For proc_exit_inprogress  */
+#include "storage/ipc.h"		/* For proc_exit_inprogress */
 #include "tcop/tcopprot.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_thread.h"
@@ -28,22 +28,12 @@
  */
 CdbDispatchDirectDesc default_dispatch_direct_desc = { false, 0, {0}};
 
-static CdbDispatchResults *cdbdisp_makeDispatchResults(int resultCapacity,
-													   int sliceCapacity,
-													   bool cancelOnError);
+static void cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds);
 
-/*
- * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
- * internal dispatcher structures. See MPP-6253 and MPP-6579.
- */
-static void
-cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds)
-{
-	if (ds && ds->primaryResults && ds->primaryResults->writer_gang)
-	{
-		ds->primaryResults->writer_gang->dispatcherActive = false;
-	}
-}
+static CdbDispatchResults *
+cdbdisp_makeDispatchResults(int resultCapacity,
+							int sliceCapacity,
+							bool cancelOnError);
 
 /*
  * cdbdisp_dispatchToGang:
@@ -75,8 +65,10 @@ cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds)
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
 void
-cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
-					   int sliceIndex, CdbDispatchDirectDesc * disp_direct)
+cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
+					   struct Gang *gp,
+					   int sliceIndex,
+					   CdbDispatchDirectDesc * disp_direct)
 {
 	struct CdbDispatchResults *dispatchResults = ds->primaryResults;
 
@@ -95,10 +87,8 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg
-						 ("query plan with multiple segworker groups is not supported"),
-						 errhint
-						 ("likely caused by a function that reads or modifies data in a distributed table")));
+						 errmsg("query plan with multiple segworker groups is not supported"),
+						 errhint("likely caused by a function that reads or modifies data in a distributed table")));
 			}
 
 			dispatchResults->writer_gang->dispatcherActive = true;
@@ -106,7 +96,7 @@ cdbdisp_dispatchToGang(struct CdbDispatcherState *ds, struct Gang *gp,
 	}
 
 	cdbdisp_dispatchToGang_byThreads(ds, gp, sliceIndex, disp_direct);
-}	/* cdbdisp_dispatchToGang */
+}
 
 /*
  * CdbCheckDispatchResult:
@@ -312,7 +302,7 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 	/*
 	 * not reached
 	 */
-}	/* cdbdisp_finishCommand */
+}
 
 /*
  * cdbdisp_handleError
@@ -405,7 +395,7 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 		 */
 		cdbdisp_destroyDispatcherState(ds);
 	}
-}	/* cdbdisp_handleError */
+}
 
 bool
 cdbdisp_check_estate_for_cancel(struct EState *estate)
@@ -432,37 +422,6 @@ cdbdisp_check_estate_for_cancel(struct EState *estate)
 
 	return false;
 }
-
-/*
- * cdbdisp_makeDispatchResults:
- * Allocates a CdbDispatchResults object in the current memory context.
- * Will be freed in function cdbdisp_destroyDispatcherState by deleting the
- * memory context.
- */
-static CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
-							bool cancelOnError)
-{
-	CdbDispatchResults *results = palloc0(sizeof(*results));
-	int			nbytes = resultCapacity * sizeof(results->resultArray[0]);
-
-	results->resultArray = palloc0(nbytes);
-	results->resultCapacity = resultCapacity;
-	results->resultCount = 0;
-	results->iFirstError = -1;
-	results->errcode = 0;
-	results->cancelOnError = cancelOnError;
-
-	results->sliceMap = NULL;
-	results->sliceCapacity = sliceCapacity;
-	if (sliceCapacity > 0)
-	{
-		nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
-		results->sliceMap = palloc0(nbytes);
-	}
-
-	return results;
-}	/* cdbdisp_makeDispatchResults */
 
 /*
  * Allocate memory and initialize CdbDispatcherState.
@@ -527,4 +486,48 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState * ds)
 	ds->dispatchStateContext = NULL;
 	ds->dispatchThreads = NULL;
 	ds->primaryResults = NULL;
+}
+
+/*
+ * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
+ * internal dispatcher structures. See MPP-6253 and MPP-6579.
+ */
+static void
+cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds)
+{
+	if (ds && ds->primaryResults && ds->primaryResults->writer_gang)
+	{
+		ds->primaryResults->writer_gang->dispatcherActive = false;
+	}
+}
+
+/*
+ * cdbdisp_makeDispatchResults:
+ * Allocates a CdbDispatchResults object in the current memory context.
+ * Will be freed in function cdbdisp_destroyDispatcherState by deleting the
+ * memory context.
+ */
+static CdbDispatchResults *
+cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
+							bool cancelOnError)
+{
+	CdbDispatchResults *results = palloc0(sizeof(*results));
+	int			nbytes = resultCapacity * sizeof(results->resultArray[0]);
+
+	results->resultArray = palloc0(nbytes);
+	results->resultCapacity = resultCapacity;
+	results->resultCount = 0;
+	results->iFirstError = -1;
+	results->errcode = 0;
+	results->cancelOnError = cancelOnError;
+
+	results->sliceMap = NULL;
+	results->sliceCapacity = sliceCapacity;
+	if (sliceCapacity > 0)
+	{
+		nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
+		results->sliceMap = palloc0(nbytes);
+	}
+
+	return results;
 }

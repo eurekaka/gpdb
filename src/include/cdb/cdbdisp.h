@@ -113,52 +113,12 @@ typedef struct CdbDispatcherState
 
 /*--------------------------------------------------------------------*/
 
-/*
- * cdbdisp_dispatchToGang:
- * Send the strCommand SQL statement to the subset of all segdbs in the cluster
- * specified by the gang parameter.  cancelOnError indicates whether an error
- * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
- * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.	They are run inside of threads.
- * The number of segdbs handled by any one thread is determined by the
- * guc variable gp_connections_per_thread.
- *
- * The caller must also provide a serialized Snapshot string to be used to
- * set the distributed snapshot for the dispatched statement.
- *
- * The caller must provide a CdbDispatchResults object having available
- * resultArray slots sufficient for the number of QEs to be dispatched:
- * i.e., resultCapacity - resultCount >= gp->size.  This function will
- * assign one resultArray slot per QE of the Gang, paralleling the Gang's
- * db_descriptors array.  Success or failure of each QE will be noted in
- * the QE's CdbDispatchResult entry; but before examining the results, the
- * caller must wait for execution to end by calling CdbCheckDispatchResult().
- *
- * The CdbDispatchResults object owns some malloc'ed storage, so the caller
- * must make certain to free it by calling cdbdisp_destroyDispatchState().
- *
- * When dispatchResults->cancelOnError is false, strCommand is to be
- * dispatched to every connected gang member if possible, despite any
- * cancellation requests, QE errors, connection failures, etc.
- *
- * NB: This function should return normally even if there is an error.
- * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...),
- * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
- */
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
                        struct Gang					*gp,
                        int							sliceIndex,
                        CdbDispatchDirectDesc		*direct);
 
-/*
- * CdbCheckDispatchResult:
- *
- * Waits for completion of threads launched by cdbdisp_dispatchToGang().
- *
- * QEs that were dispatched with 'cancelOnError' true and are not yet idle
- * will be canceled/finished according to waitMode.
- */
 void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
 
