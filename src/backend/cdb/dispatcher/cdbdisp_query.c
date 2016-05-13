@@ -2,7 +2,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbdisp_query.c
- *	  Functions to dispatch commands to QExecutors.
+ *	  Functions to dispatch command string or plan to QExecutors.
  *
  *
  * Copyright (c) 2005-2008, Greenplum inc
@@ -15,6 +15,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_thread.h"
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbdisp_query.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
@@ -41,32 +42,38 @@ typedef struct
 	Slice	   *slice;
 } sliceVec;
 
-/* determines which dispatchOptions need to be set. */
-static int	generateTxnOptions(bool needTwoPhase);
-static void remove_subquery_in_RTEs(Node *node);
-static void CdbDispatchUtilityStatement_Internal(struct Node *stmt,
-												 bool needTwoPhase,
-												 char *debugCaller);
-static void cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
-												 char *serializedQuerytree,
-												 int serializedQuerytreelen,
-												 char *serializedPlantree,
-												 int serializedPlantreelen,
-												 bool cancelOnError,
-												 bool needTwoPhase,
-												 struct CdbDispatcherState
-												 *ds);
+static void stripPlanRTEBeforeDispatch(Node *node);
 
-static int	fillSliceVector(SliceTable * sliceTable, int sliceIndex,
-							sliceVec * sliceVector, int len);
+static void
+CdbDispatchUtilityStatement_Internal(struct Node *stmt,
+									 bool needTwoPhase,
+									 char *debugCaller);
 
-static char *PQbuildGpQueryString(MemoryContext cxt,
-								  DispatchCommandParms * pParms,
-								  DispatchCommandQueryParms * pQueryParms,
-								  int *finalLen);
+static void
+cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
+									 char *serializedQuerytree,
+									 int serializedQuerytreelen,
+									 char *serializedPlantree,
+									 int serializedPlantreelen,
+									 bool cancelOnError,
+									 bool needTwoPhase,
+									 struct CdbDispatcherState *ds);
 
-static void cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
-								   DispatchCommandQueryParms * pQueryParms);
+static int
+fillSliceVector(SliceTable *sliceTable,
+				int sliceIndex,
+				sliceVec *sliceVector,
+				int len);
+
+static char *
+PQbuildGpQueryString(MemoryContext cxt,
+					 DispatchCommandParms * pParms,
+					 DispatchCommandQueryParms * pQueryParms,
+					 int *finalLen);
+
+static void
+cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
+					   DispatchCommandQueryParms * pQueryParms);
 
 /* Special Greenplum-only method for executing SQL statements.	Specifies a global
  * transaction context that the statement should be executed within.
@@ -311,7 +318,8 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms * pQueryParms,
 				  bool cancelOnError,
-				  struct SliceTable *sliceTbl, struct CdbDispatcherState *ds)
+				  struct SliceTable *sliceTbl,
+				  struct CdbDispatcherState *ds)
 {
 	int			oldLocalSlice = 0;
 	sliceVec   *sliceVector = NULL;
@@ -702,11 +710,12 @@ count_dependent_children(SliceTable * sliceTable, int sliceIndex,
 	return ret;
 }
 
-int
-fillSliceVector(SliceTable * sliceTbl, int rootIdx, sliceVec * sliceVector,
+static int
+fillSliceVector(SliceTable *sliceTbl, int rootIdx,
+				sliceVec *sliceVector,
 				int sliceLim)
 {
-	int			top_count;
+	int top_count;
 
 	/*
 	 * count doesn't include top slice add 1 
@@ -890,7 +899,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 *	execution,
 	 *	this is an optimization to reduce size of serialized plan before dispatching
 	 */
-	remove_subquery_in_RTEs((Node *) (queryDesc->plannedstmt->rtable));
+	stripPlanRTEBeforeDispatch((Node *) (queryDesc->plannedstmt->rtable));
 
 	/*
 	 * serialized plan tree. Note that we're called for a single
@@ -1043,7 +1052,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
 								  true /* wantSnapshot */ ,
 								  queryDesc->extended_query,
-								  generateTxnOptions(planRequiresTxn),
+								  mppTxnOptions(planRequiresTxn),
 								  "cdbdisp_dispatchPlan");
 
 	Assert(sliceTbl);
@@ -1072,13 +1081,13 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 {
 	DispatchCommandQueryParms queryParms;
 
-	Gang	   *primaryGang;
-	List	   *idleReaderGangs;
-	List	   *busyReaderGangs;
-	ListCell   *le;
+	Gang *primaryGang;
+	List *idleReaderGangs;
+	List *busyReaderGangs;
+	ListCell *le;
 
-	int			nsegdb = getgpsegmentCount();
-	int			gangCount;
+	int nsegdb = getgpsegmentCount();
+	int	gangCount;
 
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = strCommand;
@@ -1103,7 +1112,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
 								  true /* withSnapshot */ ,
 								  false /* cursor */ ,
-								  generateTxnOptions(needTwoPhase),
+								  mppTxnOptions(needTwoPhase),
 								  "cdbdisp_dispatchSetCommandToAllGangs");
 
 	idleReaderGangs = getAllIdleReaderGangs();
@@ -1116,7 +1125,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 
 	ds->primaryResults = NULL;
 	ds->dispatchThreads = NULL;
-	cdbdisp_makeDispatcherState(ds, nsegdb * gangCount, 0, cancelOnError);
+	cdbdisp_makeDispatcherState(ds, nsegdb * gangCount, gangCount, cancelOnError);
 	cdbdisp_queryParmsInit(ds, &queryParms);
 	ds->primaryResults->writer_gang = primaryGang;
 
@@ -1124,7 +1133,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 
 	foreach(le, idleReaderGangs)
 	{
-		Gang	   *rg = lfirst(le);
+		Gang *rg = lfirst(le);
 
 		cdbdisp_dispatchToGang(ds, rg, -1, DEFAULT_DISP_DIRECT);
 	}
@@ -1139,7 +1148,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 
 		rg->noReuse = true;
 	}
-}	/* cdbdisp_dispatchSetCommandToAllGangs */
+}
 
 void
 CdbSetGucOnAllGangs(const char *strCommand,
@@ -1254,7 +1263,7 @@ cdbdisp_dispatchCommand(const char *strCommand,
 	queryParms.serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,
 								  withSnapshot, false,
-								  generateTxnOptions(needTwoPhase),
+								  mppTxnOptions(needTwoPhase),
 								  "cdbdisp_dispatchCommand");
 
 	/*
@@ -1466,34 +1475,39 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
  * and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt, char *debugCaller
-							__attribute__ ((unused)))
+CdbDispatchUtilityStatement(struct Node *stmt,
+							char *debugCaller __attribute__ ((unused)))
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true,
+	CdbDispatchUtilityStatement_Internal(stmt,
+										 true,
 										 "CdbDispatchUtilityStatement");
 }
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char *debugCaller
-									   __attribute__ ((unused)))
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt,
+									   char *debugCaller __attribute__ ((unused)))
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false,
+	CdbDispatchUtilityStatement_Internal(stmt,
+										 false,
 										 "CdbDispatchUtilityStatement_NoTwoPhase");
 }
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase,
+CdbDispatchUtilityStatement_Internal(struct Node *stmt,
+									 bool needTwoPhase,
 									 char *debugCaller)
 {
-	volatile struct CdbDispatcherState ds = { NULL, NULL };
+	volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "cdbdisp_dispatchUtilityStatement called (needTwoPhase = %s, debugCaller = %s)",
-		 (needTwoPhase ? "true" : "false"), debugCaller);
+		 (needTwoPhase ? "true" : "false"),
+		 debugCaller);
 
 	PG_TRY();
 	{
-		cdbdisp_dispatchUtilityStatement(stmt, true /* cancelOnError */ ,
+		cdbdisp_dispatchUtilityStatement(stmt,
+										 true /* cancelOnError */ ,
 										 needTwoPhase,
 										 true /* withSnapshot */ ,
 										 (struct CdbDispatcherState *) &ds,
@@ -1515,42 +1529,16 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase,
 		cdbdisp_destroyDispatcherState((struct CdbDispatcherState *) &ds);
 
 		PG_RE_THROW();
-		/*
-		 * not reached
-		 */
 	}
 	PG_END_TRY();
-
-}	/* CdbDispatchUtilityStatement */
-
-/* generateTxnOptions:
- * Generates an int containing the appropriate flags to direct the remote
- * segdb QE process to perform any needed transaction commands before or
- * after the statement.
- *
- * needTwoPhase - specifies whether this statement even wants a transaction to
- *				 be started.  Certain utility statements dont want to be in a
- *				 distributed transaction.
- */
-static int
-generateTxnOptions(bool needTwoPhase)
-{
-	int			options;
-
-	options = mppTxnOptions(needTwoPhase);
-
-	return options;
-
 }
 
 /*
- *
- * Remove subquery field in RTE's with subquery kind
- * This is an optimization used to reduce plan size before serialization
- *
+ * Remove subquery field in RTE's with subquery kind. This is an optimization used
+ * to reduce plan size before serialization for dispatching.
  */
 static void
-remove_subquery_in_RTEs(Node *node)
+stripPlanRTEBeforeDispatch(Node *node)
 {
 	if (node == NULL)
 	{
@@ -1579,7 +1567,7 @@ remove_subquery_in_RTEs(Node *node)
 
 		foreach(lc, list)
 		{
-			remove_subquery_in_RTEs((Node *) lfirst(lc));
+			stripPlanRTEBeforeDispatch((Node *) lfirst(lc));
 		}
 	}
 }

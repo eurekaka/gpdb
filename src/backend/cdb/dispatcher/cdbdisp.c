@@ -30,11 +30,6 @@ CdbDispatchDirectDesc default_dispatch_direct_desc = { false, 0, {0}};
 
 static void cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds);
 
-static CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity,
-							int sliceCapacity,
-							bool cancelOnError);
-
 /*
  * cdbdisp_dispatchToGang:
  * Send the strCommand SQL statement to the subset of all segdbs in the cluster
@@ -147,83 +142,8 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 	}
 }
 
-/*--------------------------------------------------------------------*/
-
 /*
- * I refactored this code out of the two routines
- *	  cdbdisp_dispatchRMCommand  and  cdbdisp_dispatchDtxProtocolCommand
- * when I thought I might need it in a third place.
- *
- * Not sure if this makes things cleaner or not
- */
-struct pg_result **
-cdbdisp_returnResults(CdbDispatchResults * primaryResults,
-					  StringInfo errmsgbuf, int *numresults)
-{
-	CdbDispatchResults *gangResults;
-	CdbDispatchResult *dispatchResult;
-	PGresult  **resultSets = NULL;
-	int			nslots;
-	int			nresults = 0;
-	int			i;
-	int			totalResultCount = 0;
-
-	/*
-	 * Allocate result set ptr array. Make room for one PGresult ptr per
-	 * primary segment db, plus a null terminator slot after the
-	 * last entry. The caller must PQclear() each PGresult and free() the
-	 * array.
-	 */
-	nslots = 2 * largestGangsize() + 1;
-	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
-
-	if (!resultSets)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg
-						("cdbdisp_returnResults failed: out of memory")));
-
-	/*
-	 * Collect results from primary gang.
-	 */
-	gangResults = primaryResults;
-	if (gangResults)
-	{
-		totalResultCount = gangResults->resultCount;
-
-		for (i = 0; i < gangResults->resultCount; ++i)
-		{
-			dispatchResult = &gangResults->resultArray[i];
-
-			/*
-			 * Append error messages to caller's buffer. 
-			 */
-			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
-
-			/*
-			 * Take ownership of this QE's PGresult object(s). 
-			 */
-			nresults += cdbdisp_snatchPGresults(dispatchResult,
-												resultSets + nresults,
-												nslots - nresults - 1);
-		}
-	}
-
-	/*
-	 * Put a stopper at the end of the array.
-	 */
-	Assert(nresults < nslots);
-	resultSets[nresults] = NULL;
-
-	/*
-	 * If our caller is interested, tell them how many sets we're returning. 
-	 */
-	if (numresults != NULL)
-		*numresults = totalResultCount;
-
-	return resultSets;
-}
-
-/* Wait for all QEs to finish, then report any errors from the given
+ * Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
  * associated gang(s) executed the command successfully, throws an
  * error and does not return.  No-op if both CdbDispatchResults ptrs are NULL.
@@ -237,7 +157,7 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 													   void *ctx), void *ctx)
 {
 	StringInfoData buf;
-	int			errorcode = 0;
+	int errorcode = 0;
 
 	/*
 	 * If cdbdisp_dispatchToGang() wasn't called, don't wait.
@@ -302,10 +222,6 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	/*
-	 * not reached
-	 */
 }
 
 /*
@@ -354,8 +270,8 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 	 */
 	if (qderrcode == ERRCODE_GP_INTERCONNECTION_ERROR)
 	{
-		bool		qd_lost_flag = false;
-		char	   *qderrtext = elog_message();
+		bool qd_lost_flag = false;
+		char *qderrtext = elog_message();
 
 		if (qderrtext
 			&& strcmp(qderrtext, CDB_MOTION_LOST_CONTACT_STRING) == 0)
@@ -364,11 +280,9 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 		if (ds->primaryResults && ds->primaryResults->errcode)
 		{
 			if (qd_lost_flag
-				&& ds->primaryResults->errcode ==
-				ERRCODE_GP_INTERCONNECTION_ERROR)
+				&& ds->primaryResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
-			else if (ds->primaryResults->errcode !=
-					 ERRCODE_GP_INTERCONNECTION_ERROR)
+			else if (ds->primaryResults->errcode != ERRCODE_GP_INTERCONNECTION_ERROR)
 				useQeError = true;
 		}
 	}
@@ -401,32 +315,6 @@ cdbdisp_handleError(struct CdbDispatcherState *ds)
 	}
 }
 
-bool
-cdbdisp_check_estate_for_cancel(struct EState *estate)
-{
-	struct CdbDispatchResults *meleeResults;
-
-	Assert(estate);
-	Assert(estate->dispatcherState);
-
-	meleeResults = estate->dispatcherState->primaryResults;
-
-	if (meleeResults == NULL)	/* cleanup ? */
-	{
-		return false;
-	}
-
-	Assert(meleeResults);
-
-/*	if (pleaseCancel || meleeResults->errcode) */
-	if (meleeResults->errcode)
-	{
-		return true;
-	}
-
-	return false;
-}
-
 /*
  * Allocate memory and initialize CdbDispatcherState.
  *
@@ -453,7 +341,8 @@ cdbdisp_makeDispatcherState(CdbDispatcherState * ds, int maxResults,
 													 ALLOCSET_DEFAULT_MAXSIZE);
 
 	oldContext = MemoryContextSwitchTo(ds->dispatchStateContext);
-	ds->primaryResults = cdbdisp_makeDispatchResults(maxResults, maxSlices,
+	ds->primaryResults = cdbdisp_makeDispatchResults(maxResults,
+													 maxSlices,
 													 cancelOnError);
 	ds->dispatchThreads = cdbdisp_makeDispatchThreads(maxSlices);
 	MemoryContextSwitchTo(oldContext);
@@ -472,7 +361,7 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState * ds)
 
 	if (results != NULL && results->resultArray != NULL)
 	{
-		int			i;
+		int i;
 
 		for (i = 0; i < results->resultCount; i++)
 		{
@@ -494,7 +383,7 @@ cdbdisp_destroyDispatcherState(CdbDispatcherState * ds)
 
 /*
  * Clear our "active" flags; so that we know that the writer gangs are busy -- and don't stomp on
- * internal dispatcher structures. See MPP-6253 and MPP-6579.
+ * internal dispatcher structures.
  */
 static void
 cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds)
@@ -503,35 +392,4 @@ cdbdisp_clearGangActiveFlag(CdbDispatcherState * ds)
 	{
 		ds->primaryResults->writer_gang->dispatcherActive = false;
 	}
-}
-
-/*
- * cdbdisp_makeDispatchResults:
- * Allocates a CdbDispatchResults object in the current memory context.
- * Will be freed in function cdbdisp_destroyDispatcherState by deleting the
- * memory context.
- */
-static CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity, int sliceCapacity,
-							bool cancelOnError)
-{
-	CdbDispatchResults *results = palloc0(sizeof(*results));
-	int			nbytes = resultCapacity * sizeof(results->resultArray[0]);
-
-	results->resultArray = palloc0(nbytes);
-	results->resultCapacity = resultCapacity;
-	results->resultCount = 0;
-	results->iFirstError = -1;
-	results->errcode = 0;
-	results->cancelOnError = cancelOnError;
-
-	results->sliceMap = NULL;
-	results->sliceCapacity = sliceCapacity;
-	if (sliceCapacity > 0)
-	{
-		nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
-		results->sliceMap = palloc0(nbytes);
-	}
-
-	return results;
 }

@@ -2,7 +2,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbdispatchresult.c
- *	  Functions to dispatch commands to QExecutors
+ *	  Functions for handling dispatch results 
  *
  *
  * Copyright (c) 2005-2008, Greenplum inc
@@ -148,7 +148,7 @@ cdbdisp_makeResult(struct CdbDispatchResults *meleeResults,
 		cdbconn_setSliceIndex(segdbDesc, sliceIndex);
 
 	return dispatchResult;
-}	/* cdbdisp_initResult */
+}
 
 
 /* Destroy a CdbDispatchResult object. */
@@ -604,8 +604,8 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult * dispatchResult,
 						   bool verbose, struct StringInfoData *buf)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
-	int			ires;
-	int			nres;
+	int ires;
+	int nres;
 
 	if (!dispatchResult || !buf)
 		return;
@@ -615,11 +615,10 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult * dispatchResult,
 	 */
 	nres = cdbdisp_numPGresult(dispatchResult);
 	for (ires = 0; ires < nres; ++ires)
-	{							/* for each PGresult */
-		PGresult   *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
+	{
+		PGresult *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
 		ExecStatusType resultStatus = PQresultStatus(pgresult);
-		char	   *whoami =
-			PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
+		char *whoami = PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
 
 		/*
 		 * QE success
@@ -632,7 +631,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult * dispatchResult,
 		{
 			if (verbose)
 			{
-				char	   *cmdStatus = PQcmdStatus(pgresult);
+				char *cmdStatus = PQcmdStatus(pgresult);
 
 				oneTrailingNewline(buf);
 				appendStringInfo(buf, "ok: %s", cmdStatus ? cmdStatus : "");
@@ -646,11 +645,9 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult * dispatchResult,
 		 */
 		else
 		{
-			char	   *pri =
-				PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY);
-			char	   *dtl =
-				PQresultErrorField(pgresult, PG_DIAG_MESSAGE_DETAIL);
-			char	   *ctx = PQresultErrorField(pgresult, PG_DIAG_CONTEXT);
+			char *pri = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY);
+			char *dtl = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_DETAIL);
+			char *ctx = PQresultErrorField(pgresult, PG_DIAG_CONTEXT);
 
 			oneTrailingNewline(buf);
 			if (pri)
@@ -708,7 +705,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult * dispatchResult,
 
   done:
 	noTrailingNewline(buf);
-}	/* cdbdisp_dumpDispatchResult */
+}
 
 
 /*--------------------------------------------------------------------*/
@@ -937,4 +934,120 @@ cdbdisp_sqlstate_to_errcode(const char *sqlstate)
 {
 	return MAKE_SQLSTATE(sqlstate[0], sqlstate[1], sqlstate[2],
 						 sqlstate[3], sqlstate[4]);
-}	/* cdbdisp_sqlstate_to_errcode */
+}
+
+struct pg_result **
+cdbdisp_returnResults(CdbDispatchResults *primaryResults,
+					  StringInfo errmsgbuf,
+					  int *numresults)
+{
+	CdbDispatchResults *gangResults;
+	CdbDispatchResult *dispatchResult;
+	PGresult  **resultSets = NULL;
+	int			nslots;
+	int			nresults = 0;
+	int			i;
+	int			totalResultCount = 0;
+
+	/*
+	 * Allocate result set ptr array. Make room for one PGresult ptr per
+	 * primary segment db, plus a null terminator slot after the
+	 * last entry. The caller must PQclear() each PGresult and free() the
+	 * array.
+	 */
+	nslots = 2 * largestGangsize() + 1;
+	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
+
+	if (!resultSets)
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("cdbdisp_returnResults failed: out of memory")));
+
+	/*
+	 * Collect results from primary gang.
+	 */
+	gangResults = primaryResults;
+	if (gangResults)
+	{
+		totalResultCount = gangResults->resultCount;
+
+		for (i = 0; i < gangResults->resultCount; ++i)
+		{
+			dispatchResult = &gangResults->resultArray[i];
+
+			/*
+			 * Append error messages to caller's buffer. 
+			 */
+			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
+
+			/*
+			 * Take ownership of this QE's PGresult object(s). 
+			 */
+			nresults += cdbdisp_snatchPGresults(dispatchResult,
+												resultSets + nresults,
+												nslots - nresults - 1);
+		}
+	}
+
+	/*
+	 * Put a stopper at the end of the array.
+	 */
+	Assert(nresults < nslots);
+	resultSets[nresults] = NULL;
+
+	/*
+	 * If our caller is interested, tell them how many sets we're returning. 
+	 */
+	if (numresults != NULL)
+		*numresults = totalResultCount;
+
+	return resultSets;
+}
+
+bool
+cdbdisp_check_results_errcode(struct CdbDispatchResults *meleeResults)
+{
+    if (meleeResults == NULL)
+    {
+        return false;
+    }
+
+    if (meleeResults->errcode)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/*
+ * cdbdisp_makeDispatchResults:
+ * Allocates a CdbDispatchResults object in the current memory context.
+ * Will be freed in function cdbdisp_destroyDispatcherState by deleting the
+ * memory context.
+ */
+CdbDispatchResults *
+cdbdisp_makeDispatchResults(int resultCapacity,
+                            int sliceCapacity,
+                            bool cancelOnError)
+{
+    CdbDispatchResults *results = palloc0(sizeof(*results));
+    int         nbytes = resultCapacity * sizeof(results->resultArray[0]);
+
+    results->resultArray = palloc0(nbytes);
+    results->resultCapacity = resultCapacity;
+    results->resultCount = 0;
+    results->iFirstError = -1;
+    results->errcode = 0;
+    results->cancelOnError = cancelOnError;
+
+    results->sliceMap = NULL;
+    results->sliceCapacity = sliceCapacity;
+    if (sliceCapacity > 0)
+    {
+        nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
+        results->sliceMap = palloc0(nbytes);
+    }
+
+    return results;
+}

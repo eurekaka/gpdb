@@ -275,20 +275,45 @@ cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex);
 CdbDispatchResult *
 cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex);
 
+struct pg_result **
+cdbdisp_returnResults(CdbDispatchResults *primaryResults,
+                      StringInfo errmsgbuf,
+                      int *numresults);
+
 /*--------------------------------------------------------------------*/
 
-/* Convert compact error code (ERRCODE_xxx) to 5-char SQLSTATE string,
- * and put it into a 6-char buffer provided by caller.
+/*
+ * Convert compact error code (ERRCODE_xxx) to 5-char SQLSTATE string,
+ * and put it into a 6-char buffer provided by caller, then return outbuf+5
  */
-char *                          /* returns outbuf+5 */
+char *
 cdbdisp_errcode_to_sqlstate(int errcode, char outbuf[6]);
 
-/* Convert SQLSTATE string to compact error code (ERRCODE_xxx). */
+/*
+ * Convert SQLSTATE string to compact error code (ERRCODE_xxx).
+ */
 int
 cdbdisp_sqlstate_to_errcode(const char *sqlstate);
 
 char *
 cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults);
+
+/*
+ * used in the interconnect on the dispatcher to avoid error-cleanup deadlocks.
+ */
+bool
+cdbdisp_check_results_errcode(struct CdbDispatchResults *meeleResults);
+
+/*
+ * cdbdisp_makeDispatchResults:
+ * Allocates a CdbDispatchResults object in the current memory context.
+ * Will be freed in function cdbdisp_destroyDispatcherState by deleting the
+ * memory context.
+ */
+CdbDispatchResults *
+cdbdisp_makeDispatchResults(int resultCapacity,
+							int sliceCapacity,
+							bool cancelOnError);
 
 /*--------------------------------------------------------------------*/
 
