@@ -11,15 +11,14 @@
 #ifndef CDBDISP_H
 #define CDBDISP_H
 
-#include "lib/stringinfo.h"         /* StringInfo */
+#include "lib/stringinfo.h" /* StringInfo */
 
 #include "cdb/cdbtm.h"
 
 #define CDB_MOTION_LOST_CONTACT_STRING "Interconnect error master lost contact with segment."
 
-struct CdbDispatchResults;          /* #include "cdb/cdbdispatchresult.h" */
-struct Gang;                        /* #include "cdb/cdbgang.h" */
-
+struct CdbDispatchResults; /* #include "cdb/cdbdispatchresult.h" */
+struct Gang; /* #include "cdb/cdbgang.h" */
 
 /*
  * Types of message to QE when we wait for it.
@@ -43,7 +42,7 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 
 typedef struct CdbDispatcherState
 {
-	struct CdbDispatchResults    *primaryResults;
+	struct CdbDispatchResults *primaryResults;
 	struct CdbDispatchCmdThreads *dispatchThreads;
 	MemoryContext dispatchStateContext;
 } CdbDispatcherState;
@@ -80,9 +79,9 @@ typedef struct CdbDispatcherState
  */
 void
 cdbdisp_dispatchToGang(struct CdbDispatcherState *ds,
-                       struct Gang					*gp,
-                       int							sliceIndex,
-                       CdbDispatchDirectDesc		*direct);
+					   struct Gang *gp,
+					   int sliceIndex,
+					   CdbDispatchDirectDesc *direct);
 
 /*
  * CdbCheckDispatchResult:

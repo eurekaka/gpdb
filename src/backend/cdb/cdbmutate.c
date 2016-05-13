@@ -2857,6 +2857,44 @@ exec_make_plan_constant(struct PlannedStmt *stmt, bool is_SRI)
 	return plan_tree_mutator((Node *)stmt->planTree, pre_dispatch_function_evaluation_mutator, &pcontext);
 }
 
+/*
+ * Remove subquery field in RTE's with subquery kind.
+ */
+void
+remove_subquery_in_RTEs(Node *node)
+{
+    if (node == NULL)
+    {
+        return;
+    }
+
+    if (IsA(node, RangeTblEntry))
+    {
+        RangeTblEntry *rte = (RangeTblEntry *) node;
+
+        if (RTE_SUBQUERY == rte->rtekind && NULL != rte->subquery)
+        {
+            /*
+             * replace subquery with a dummy subquery
+             */
+            rte->subquery = makeNode(Query);
+        }
+
+        return;
+    }
+
+    if (IsA(node, List))
+    {
+        List       *list = (List *) node;
+        ListCell   *lc = NULL;
+		
+		foreach(lc, list)
+        {
+            remove_subquery_in_RTEs((Node *) lfirst(lc));
+        }
+    }
+}
+
 #define GP_PARTITION_SELECTION_OID 6084
 #define GP_PARTITION_EXPANSION_OID 6085
 #define GP_PARTITION_INVERSE_OID 6086
