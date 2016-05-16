@@ -20,6 +20,18 @@ struct StringInfoData;              /* #include "lib/stringinfo.h" */
 struct PQExpBufferData;             /* #include "libpq-int.h" */
 
 /*
+ * CdbDispatchResults_SliceInfo:
+ * An entry in a CdbDispatchResults object's slice map.
+ * Used to find the CdbDispatchResult objects for a gang
+ * of QEs given their slice index.
+ */
+typedef struct CdbDispatchResults_SliceInfo
+{
+    int resultBegin;
+    int resultEnd;
+} CdbDispatchResults_SliceInfo;
+
+/*
  * CdbDispatchResult:
  * Struct for holding the result information
  * for a command dispatched by CdbCommandDispatch to
@@ -149,17 +161,6 @@ typedef struct CdbDispatchResults
 	struct Gang *writer_gang;
 } CdbDispatchResults;
 
-/*
- * CdbDispatchResults_SliceInfo:
- * An entry in a CdbDispatchResults object's slice map.
- * Used to find the CdbDispatchResult objects for a gang
- * of QEs given their slice index.
- */
-typedef struct CdbDispatchResults_SliceInfo
-{
-    int resultBegin;
-    int resultEnd;
-} CdbDispatchResults_SliceInfo;
 
 /*
  * Create a CdbDispatchResult object, appending it to the

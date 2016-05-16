@@ -592,7 +592,7 @@ processCopyEndResults(CdbCopy *c,
 				segment_rows_rejected = res->numRejected;
 
 			/* Get AO tuple counts */
-			c->aotupcounts = process_aotupcounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
+			c->aotupcounts = PQprocessAoTupCounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
 			/* free the PGresult object */
 			PQclear(res);
 		}

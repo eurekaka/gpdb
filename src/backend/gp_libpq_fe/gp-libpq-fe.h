@@ -244,6 +244,9 @@ typedef struct
 #endif
 } PQaoRelTupCount;
 
+typedef struct PartitionNode PartitionNode;
+typedef struct HTAB HTAB;
+
 /* ----------------
  * Exported functions of libpq
  * ----------------

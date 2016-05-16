@@ -55,8 +55,8 @@ static void cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
 
 static char *
 PQbuildGpDtxProtocolCommand(MemoryContext cxt,
-							DispatchCommandDtxProtocolParms *
-							pDtxProtocolParms, int *finalLen)
+							DispatchCommandDtxProtocolParms * pDtxProtocolParms,
+							int *finalLen);
 
 /*
  * cdbdisp_dispatchDtxProtocolCommand:

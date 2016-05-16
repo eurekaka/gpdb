@@ -196,7 +196,7 @@ extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
 extern int sqlstate_to_errcode(const char *sqlstate);
-extern char *errcode_to_sqlstate*(int errcode, char outbuf[6]);
+extern char *errcode_to_sqlstate(int errcode, char outbuf[6]);
 
 extern int
 errmsg(const char *fmt,...)

@@ -58,9 +58,10 @@
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "libpq/pqsignal.h"
+#include "utils/hsearch.h"
+#include "nodes/pg_list.h"
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
-
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
@@ -1272,15 +1273,14 @@ PQenv2encoding(void)
 	return encoding;
 }
 
+/*
+ * This routine would only be called in main thread.
+ */
 HTAB *
 PQprocessAoTupCounts(PartitionNode * parts, HTAB *ht,
                     void *aotupcounts, int naotupcounts)
 {
 	PQaoRelTupCount *ao = (PQaoRelTupCount *) aotupcounts;
-
-	if (Debug_appendonly_print_insert)
-		ereport(LOG, (errmsg("found %d AO tuple counts to process",
-							 naotupcounts)));
 
 	if (naotupcounts)
 	{
@@ -1315,11 +1315,6 @@ PQprocessAoTupCounts(PartitionNode * parts, HTAB *ht,
 				else
 					entry->tupcount = ao->tupcount;
 
-				if (Debug_appendonly_print_insert)
-					ereport(LOG,
-							(errmsg ("processed AO tuple counts for partitioned "
-							  "relation %d. found total " INT64_FORMAT
-							  "tuples", ao->aorelid, entry->tupcount)));
 			}
 			ao++;
 		}
