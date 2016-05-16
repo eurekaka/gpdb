@@ -1272,7 +1272,58 @@ PQenv2encoding(void)
 	return encoding;
 }
 
+HTAB *
+PQprocessAoTupCounts(PartitionNode * parts, HTAB *ht,
+                    void *aotupcounts, int naotupcounts)
+{
+	PQaoRelTupCount *ao = (PQaoRelTupCount *) aotupcounts;
 
+	if (Debug_appendonly_print_insert)
+		ereport(LOG, (errmsg("found %d AO tuple counts to process",
+							 naotupcounts)));
 
+	if (naotupcounts)
+	{
+		int	j;
 
+		for (j = 0; j < naotupcounts; j++)
+		{
+			if (OidIsValid(ao->aorelid))
+			{
+				bool found;
+				PQaoRelTupCount *entry;
 
+				if (!ht)
+				{
+					HASHCTL	ctl;
+
+					/*
+					 * reasonable assumption?
+					 */
+					long num_buckets = list_length(all_partition_relids(parts));
+					num_buckets /= num_partition_levels(parts);
+
+					ctl.keysize = sizeof(Oid);
+					ctl.entrysize = sizeof(*entry);
+					ht = hash_create("AO hash map", num_buckets, &ctl, HASH_ELEM);
+				}
+
+				entry = hash_search(ht, &(ao->aorelid), HASH_ENTER, &found);
+
+				if (found)
+					entry->tupcount += ao->tupcount;
+				else
+					entry->tupcount = ao->tupcount;
+
+				if (Debug_appendonly_print_insert)
+					ereport(LOG,
+							(errmsg ("processed AO tuple counts for partitioned "
+							  "relation %d. found total " INT64_FORMAT
+							  "tuples", ao->aorelid, entry->tupcount)));
+			}
+			ao++;
+		}
+	}
+
+	return ht;
+}

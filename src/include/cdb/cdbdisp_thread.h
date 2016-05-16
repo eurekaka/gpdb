@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
- * cdbdisp.h
- * routines for dispatching commands from the dispatcher process
+ * cdbdisp_thread.h
+ * routines for multi-thread implementation of dispatching commands 
  * to the qExec processes.
  *
  * Copyright (c) 2005-2008, Greenplum inc
@@ -12,24 +12,25 @@
 #define THREADCDBDISP_H
 
 #include "lib/stringinfo.h"         /* StringInfo */
-
 #include <pthread.h>
 #include "cdb/cdbdisp.h"
+
+struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 
 /*
  * Parameter structure for the DispatchCommand threads
  */
 typedef struct DispatchCommandParms
 {
-	char		*query_text;
-	int			query_text_len;
+	char *query_text;
+	int	query_text_len;
 
 	/*
 	 * db_count: The number of segdbs that this thread is responsible
 	 * for dispatching the command to.
 	 * Equals the count of segdbDescPtrArray below.
 	 */
-	int			db_count;
+	int	db_count;
 	
 
 	/*
@@ -49,16 +50,16 @@ typedef struct DispatchCommandParms
 	/*
 	 * pollfd supports for libpq
 	 */
-	int				nfds;
-	struct pollfd	*fds;
+	int	nfds;
+	struct pollfd *fds;
 	
 	/*
 	 * The pthread_t thread handle.
 	 */
-	pthread_t	thread;
-	bool		thread_valid;
+	pthread_t thread;
+	bool thread_valid;
 	
-}	DispatchCommandParms;
+} DispatchCommandParms;
 
 /*
  * Keeps state of all the dispatch command threads.
@@ -70,8 +71,6 @@ typedef struct CdbDispatchCmdThreads
 	int	threadCount;
 }   CdbDispatchCmdThreads;
 
-struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
-
 void
 cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
 								struct Gang *gp,
@@ -80,9 +79,12 @@ cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
 
 void
 CdbCheckDispatchResults_internal(struct CdbDispatcherState *ds,
-                                                  struct SegmentDatabaseDescriptor *** failedSegDB,
-                                                  int *numOfFailed,
-                                                  DispatchWaitMode waitMode);
+								 struct SegmentDatabaseDescriptor *** failedSegDB,
+								 int *numOfFailed,
+								 DispatchWaitMode waitMode); 
+
+void cdbdisp_waitThreads(void);
 
 CdbDispatchCmdThreads * cdbdisp_makeDispatchThreads(int maxSlices);
+
 #endif
