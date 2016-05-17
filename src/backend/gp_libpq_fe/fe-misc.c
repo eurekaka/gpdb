@@ -37,7 +37,6 @@
 #include <arpa/inet.h>
 
 #include "cdb/cdbselect.h"
-#include "cdb/cdbpartition.h"
 
 #ifdef WIN32
 #include "win32.h"
@@ -59,10 +58,12 @@
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
 #include "libpq/pqsignal.h"
-#include "utils/hsearch.h"
-#include "nodes/pg_list.h"
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
+
+#include "utils/hsearch.h"
+#include "nodes/pg_list.h"
+#include "cdb/cdbpartition.h"
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
@@ -1277,9 +1278,9 @@ PQenv2encoding(void)
 /*
  * This routine would only be called in main thread.
  */
-HTAB *
-PQprocessAoTupCounts(PartitionNode * parts, HTAB *ht,
-                    void *aotupcounts, int naotupcounts)
+struct HTAB *
+PQprocessAoTupCounts(struct PartitionNode *parts, struct HTAB *ht,
+					 void *aotupcounts, int naotupcounts)
 {
 	PQaoRelTupCount *ao = (PQaoRelTupCount *) aotupcounts;
 
