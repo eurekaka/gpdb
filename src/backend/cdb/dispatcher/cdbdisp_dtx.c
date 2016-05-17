@@ -16,7 +16,7 @@
 #include "cdb/cdbconn.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_dtx.h"
-#include "cdb/cdbdisp_thread.h"
+#include "cdb/cdbdisp_thread.h" /* for CdbDispatchCmdThreads and DispatchCommandParms */
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbutil.h"

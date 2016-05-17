@@ -12,10 +12,6 @@
 
 #include "postgres.h"
 #include "cdb/cdbconn.h"
-#include "cdb/cdbdisp.h"
-#include "cdb/cdbdisp_thread.h"
-#include "cdb/cdbdispatchresult.h"
-#include "cdb/cdbdisp_query.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
@@ -28,6 +24,12 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "miscadmin.h"
+
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdisp_thread.h" /* for CdbDispatchCmdThreads and DispatchCommandParms */
+#include "cdb/cdbdisp_dtx.h" /* for qdSerializeDtxContextInfo() */
+#include "cdb/cdbdispatchresult.h"
 
 extern bool Test_print_direct_dispatch_info;
 

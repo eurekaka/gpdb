@@ -13,6 +13,9 @@
 #include "lib/stringinfo.h" /* StringInfo */
 #include "cdb/cdbtm.h"
 
+struct QueryDesc;
+struct CdbDispatcherState;
+
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
  *
