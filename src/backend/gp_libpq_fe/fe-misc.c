@@ -37,6 +37,7 @@
 #include <arpa/inet.h>
 
 #include "cdb/cdbselect.h"
+#include "cdb/cdbpartition.h"
 
 #ifdef WIN32
 #include "win32.h"
