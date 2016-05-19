@@ -19,6 +19,23 @@ _init_cdbdisp_makeResult()
 	return results;
 }
 
+PQExpBuffer __wrap_createPQExpBuffer(void)
+{
+	return (PQExpBuffer) mock();
+}
+
+void
+__wrap_destroyPQExpBuffer(PQExpBuffer str)
+{
+	check_expected(str);
+	mock();
+}
+
+static void
+__wrap_noTrailingNewline(StringInfo buf)
+{
+	mock();
+}
 
 void
 test__cdbdisp_makeResult__oom(void **state)
@@ -29,14 +46,21 @@ test__cdbdisp_makeResult__oom(void **state)
 	struct SegmentDatabaseDescriptor *segdbDesc =
 		(struct SegmentDatabaseDescriptor *) palloc0(sizeof(struct SegmentDatabaseDescriptor));
 
-	/*
-	 * OOM in cdbconn_setSliceIndex
-	 */
-	will_return(cdbconn_setSliceIndex, false);
-	expect_any(cdbconn_setSliceIndex, segdbDesc);
-	expect_any(cdbconn_setSliceIndex, sliceIndex);
+	will_return(__wrap_createPQExpBuffer, NULL);
+	will_be_called(__wrap_destroyPQExpBuffer);
+	expect_any(__wrap_destroyPQExpBuffer, str);
 	result = cdbdisp_makeResult(results, segdbDesc, 0);
 	assert_true(result == NULL);
+}
+
+void
+test__oneTrailingNewline(void **state)
+{
+	StringInfo str = makeStringInfo();
+	will_be_called(__wrap_noTrailingNewline);
+	oneTrailingNewline(str);
+
+	assert_true(str->len == 0);
 }
 
 int
@@ -46,7 +70,8 @@ main(int argc, char *argv[])
 
     const UnitTest tests[] =
     {
-        unit_test(test__cdbdisp_makeResult__oom)
+        unit_test(test__cdbdisp_makeResult__oom),
+        unit_test(test__oneTrailingNewline)
     };
 
 	Gp_role = GP_ROLE_DISPATCH;
