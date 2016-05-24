@@ -580,7 +580,7 @@ thread_DispatchOut(DispatchCommandParms * pParms)
 
 			if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
 			{
-				char	   *msg;
+				char *msg;
 
 				msg = PQerrorMessage(dispatchResult->segdbDesc->conn);
 
@@ -1151,7 +1151,7 @@ dispatchCommand(CdbDispatchResult * dispatchResult,
 	 */
 	if (PQsendGpQuery_shared(conn, (char *) query_text, query_text_len) == 0)
 	{
-		char	   *msg = PQerrorMessage(segdbDesc->conn);
+		char *msg = PQerrorMessage(segdbDesc->conn);
 
 		if (DEBUG3 >= log_min_messages)
 			write_log("PQsendMPPQuery_shared error %s %s",

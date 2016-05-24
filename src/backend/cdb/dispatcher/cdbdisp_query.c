@@ -1227,6 +1227,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	tmp = htonl(len);
 	memcpy(shared_query + 1, &tmp, sizeof(len));
 
+	//TODO really?
 	Assert(len + 1 == total_query_len);
 
 	if (finalLen)
