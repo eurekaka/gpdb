@@ -4778,6 +4778,8 @@ PostgresMain(int argc, char *argv[],
 
 					int unusedFlags;
 
+					Assert(qe_gang_id > 0);
+
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
  					
