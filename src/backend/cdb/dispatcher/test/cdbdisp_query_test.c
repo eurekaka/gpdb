@@ -24,7 +24,6 @@ __wrap_serializeNode(Node *node, int *size, int *uncompressed_size_out)
 
 	return (char *)mock();
 }
-	
 
 /*
  * Mocked object initializations required for dispatchPlan.
