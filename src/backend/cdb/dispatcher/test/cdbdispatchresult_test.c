@@ -31,12 +31,6 @@ __wrap_destroyPQExpBuffer(PQExpBuffer str)
 	mock();
 }
 
-static void
-__wrap_noTrailingNewline(StringInfo buf)
-{
-	mock();
-}
-
 void
 test__cdbdisp_makeResult__oom(void **state)
 {
@@ -53,16 +47,6 @@ test__cdbdisp_makeResult__oom(void **state)
 	assert_true(result == NULL);
 }
 
-void
-test__oneTrailingNewline(void **state)
-{
-	StringInfo str = makeStringInfo();
-	will_be_called(__wrap_noTrailingNewline);
-	oneTrailingNewline(str);
-
-	assert_true(str->len == 0);
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -70,8 +54,7 @@ main(int argc, char *argv[])
 
     const UnitTest tests[] =
     {
-        unit_test(test__cdbdisp_makeResult__oom),
-        unit_test(test__oneTrailingNewline)
+        unit_test(test__cdbdisp_makeResult__oom)
     };
 
 	Gp_role = GP_ROLE_DISPATCH;
