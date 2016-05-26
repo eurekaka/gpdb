@@ -39,10 +39,10 @@ extern bool Test_print_direct_dispatch_info;
  */
 typedef struct
 {
-	int			sliceIndex;
-	int			children;
-	Slice	   *slice;
-} sliceVec;
+	int sliceIndex;
+	int children;
+	Slice *slice;
+} SliceVec;
 
 /*
  * Parameter structure for Greenplum Database Queries
@@ -80,7 +80,7 @@ typedef struct DispatchCommandQueryParms
 
 	/* the map from sliceIndex to gang_id, in array form */
 	int numSlices;
-	int *gangIds;
+	int *sliceIndexGangIdMap;
 } DispatchCommandQueryParms;
 
 static void stripPlanBeforeDispatch(PlannedStmt *plan);
@@ -103,7 +103,7 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 static int
 fillSliceVector(SliceTable *sliceTable,
 				int sliceIndex,
-				sliceVec *sliceVector,
+				SliceVec *sliceVector,
 				int len);
 
 static char *
@@ -123,7 +123,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct CdbDispatcherState *ds);
 
 static int *
-buildGangIdsFromSliceTable(SliceTable *sliceTbl);
+buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices);
 
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
@@ -294,21 +294,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
-	splan =
-		serializeNode((Node *) queryDesc->plannedstmt, &splan_len,
-					  &splan_len_uncompressed);
+	splan = serializeNode((Node *) queryDesc->plannedstmt,
+						  &splan_len, &splan_len_uncompressed);
 
-	/*
-	 * compute the total uncompressed size of the query plan for all slices
-	 */
-	int	num_slices =
-		queryDesc->plannedstmt->planTree->nMotionNodes + 1;
-	uint64 plan_size_in_kb =
-		((uint64) splan_len_uncompressed * (uint64) num_slices) / (uint64) 1024;
-
-	elog(((gp_log_gang >= GPVARS_VERBOSITY_VERBOSE) ? LOG : DEBUG1),
-		 "Query plan size to dispatch: " UINT64_FORMAT "KB", plan_size_in_kb);
-
+	uint64 plan_size_in_kb = ((uint64) splan_len_uncompressed) / (uint64) 1024;
 	if (0 < gp_max_plan_size && plan_size_in_kb > gp_max_plan_size)
 	{
 		ereport(ERROR,
@@ -436,12 +425,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 								  queryDesc->extended_query,
 								  mppTxnOptions(planRequiresTxn),
 								  "cdbdisp_dispatchPlan");
-
-	Assert(sliceTbl);
-	Assert(sliceTbl->slices != NIL);
-
-	queryParms.numSlices = list_length(sliceTbl->slices);
-	queryParms.gangIds = buildGangIdsFromSliceTable(sliceTbl);
 
 	cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl, ds);
 
@@ -846,10 +829,10 @@ cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 		pQueryParms->seqServerHost = NULL;
 	}
 
-	if (pQueryParms->gangIds != NULL)
+	if (pQueryParms->sliceIndexGangIdMap != NULL)
 	{
-		pfree(pQueryParms->gangIds);
-		pQueryParms->gangIds = NULL;
+		pfree(pQueryParms->sliceIndexGangIdMap);
+		pQueryParms->sliceIndexGangIdMap = NULL;
 	}
 
 	for (i = 0; i < dThreads->dispatchCommandParmsArSize; i++)
@@ -881,8 +864,8 @@ cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 static int
 compare_slice_order(const void *aa, const void *bb)
 {
-	sliceVec *a = (sliceVec *) aa;
-	sliceVec *b = (sliceVec *) bb;
+	SliceVec *a = (SliceVec *) aa;
+	SliceVec *b = (SliceVec *) bb;
 
 	if (a->slice == NULL)
 		return 1;
@@ -890,12 +873,31 @@ compare_slice_order(const void *aa, const void *bb)
 		return -1;
 
 	/*
+	 * Put the slice not going to dispatch in the last
+	 */
+	if (a->slice->primaryGang == NULL)
+	{
+		Assert(a->slice->gangType == GANGTYPE_UNALLOCATED);
+		return 1;
+	}
+	if (b->slice->primaryGang == NULL)
+	{
+		Assert(b->slice->gangType == GANGTYPE_UNALLOCATED);
+		return -1;
+	}
+
+	/*
 	 * sort the writer gang slice first, because he sets the shared snapshot
 	 */
-	if (a->slice->primaryGang->gang_id == 1 && b->slice->primaryGang->gang_id != 1)
+	if (a->slice->primaryGang->gang_id == 1)
+	{
+		Assert(b->slice->primaryGang->gang_id != 1)
 		return -1;
-	else if (b->slice->primaryGang->gang_id == 1 && a->slice->primaryGang->gang_id != 1)
+	}
+	if (b->slice->primaryGang->gang_id == 1)
+	{
 		return 1;
+	}
 
 	if (a->children == b->children)
 		return 0;
@@ -952,8 +954,8 @@ count_bits(char *bits, int nbyte)
  * tree and add up number of children, which will return too big number.
  */
 static int
-markbit_dep_children(SliceTable * sliceTable, int sliceIdx,
-					 sliceVec * sliceVec, int bitmasklen, char *bits)
+markbit_dep_children(SliceTable *sliceTable, int sliceIdx,
+					 SliceVec *sliceVec, int bitmasklen, char *bits)
 {
 	ListCell *sublist;
 	Slice *slice = (Slice *) list_nth(sliceTable->slices, sliceIdx);
@@ -982,7 +984,7 @@ markbit_dep_children(SliceTable * sliceTable, int sliceIdx,
  */
 static int
 count_dependent_children(SliceTable *sliceTable, int sliceIndex,
-						 sliceVec *sliceVector, int len)
+						 SliceVec *sliceVector, int len)
 {
 	int	ret = 0;
 	int	bitmasklen = (len + 7) >> 3;
@@ -996,7 +998,7 @@ count_dependent_children(SliceTable *sliceTable, int sliceIndex,
 
 static int
 fillSliceVector(SliceTable *sliceTbl, int rootIdx,
-				sliceVec *sliceVector, int sliceLim)
+				SliceVec *sliceVector, int nTotalSlices)
 {
 	int top_count;
 
@@ -1004,9 +1006,9 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx,
 	 * count doesn't include top slice add 1, note that sliceVector would be
 	 * modified in place by count_dependent_children.
 	 */
-	top_count = 1 + count_dependent_children(sliceTbl, rootIdx, sliceVector, sliceLim);
+	top_count = 1 + count_dependent_children(sliceTbl, rootIdx, sliceVector, nTotalSlices);
 
-	qsort(sliceVector, sliceLim, sizeof(sliceVec), compare_slice_order);
+	qsort(sliceVector, nTotalSlices, sizeof(SliceVec), compare_slice_order);
 
 	return top_count;
 }
@@ -1036,7 +1038,7 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms *pParms,
 	int	seqServerHostlen = pQueryParms->seqServerHostlen;
 	int	seqServerPort = pQueryParms->seqServerPort;
 	int numSlices = pQueryParms->numSlices;
-	int *gangIds = pQueryParms->gangIds;
+	int *sliceIndexGangIdMap = pQueryParms->sliceIndexGangIdMap;
 	int64 currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
 	Oid	sessionUserId = GetSessionUserId();
 	Oid	outerUserId = GetOuterUserId();
@@ -1217,7 +1219,7 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms *pParms,
 	{
 		for (i = 0; i < numSlices; ++i)
 		{
-			tmp = htonl(gangIds[i]);
+			tmp = htonl(sliceIndexGangIdMap[i]);
 			memcpy(pos, &tmp, sizeof(tmp));
 			pos += sizeof(tmp);
 		}
@@ -1249,9 +1251,9 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds)
 {
-	sliceVec *sliceVector = NULL;
-	int nSlices = 1; /* total slices this dispatch cares about */
-	int sliceLim = 1; /* total slices in sliceTbl*/
+	SliceVec *sliceVector = NULL;
+	int nSlices = 1; /* slices this dispatch cares about */
+	int nTotalSlices = 1; /* total slices in sliceTbl*/
 	int iSlice;
 	int rootIdx = pQueryParms->rootIdx;
 
@@ -1267,10 +1269,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
-	sliceLim = list_length(sliceTbl->slices);
-	sliceVector = palloc0(sliceLim * sizeof(sliceVec));
+	nTotalSlices = list_length(sliceTbl->slices);
+	sliceVector = palloc0(nTotalSlices * sizeof(SliceVec));
 
-	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
+	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, nTotalSlices);
+
+	pQueryParms->numSlices = nTotalSlices;
+	pQueryParms->sliceIndexGangIdMap = buildSliceIndexGangIdMap(sliceVector, nSlices, nTotalSlices);
 
 	/*
 	 * Allocate result array with enough slots for QEs of primary gangs.
@@ -1551,28 +1556,28 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt,
 }
 
 static int *
-buildGangIdsFromSliceTable(SliceTable *sliceTbl)
+buildSliceIndexGangIdMap(SliceVec *sliceVec, int numSlices, int numTotalSlices)
 {
-	Assert(sliceTbl != NULL);
+	Assert(sliceVec != NULL && numSlices > 0 && numTotalSlices > 0);
 
-	int numSlices = list_length(sliceTbl->slices);
 	/* would be freed in buildGpQueryString */
-	int *gangIds = palloc0(numSlices * sizeof(int));
+	int *sliceIndexGangIdMap = palloc0(numTotalSlices * sizeof(int));
 
-	if (gangIds == NULL)
+	if (sliceIndexGangIdMap == NULL)
 		return NULL;
 
-	ListCell *cell = NULL;
 	Slice *slice = NULL;
-	foreach(cell, sliceTbl->slices)
+	int index;
+
+	for (index = 0; index < numSlices; ++index)
 	{
-		slice = (Slice *) lfirst(cell);
+		slice = sliceVec[index].slice;
 
 		if (slice->primaryGang == NULL)
 			continue;
 
-		gangIds[slice->sliceIndex] = slice->primaryGang->gang_id;
+		sliceIndexGangIdMap[slice->sliceIndex] = slice->primaryGang->gang_id;
 	}
 
-	return gangIds;
+	return sliceIndexGangIdMap;
 }

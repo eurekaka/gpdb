@@ -4769,7 +4769,7 @@ PostgresMain(int argc, char *argv[],
 					int localSlice, i;
 					int rootIdx;
 					int numSlices;
-					int *gangIds;
+					int *sliceIndexGangIdMap;
 					TimestampTz statementStart;
 					Oid suid;
 					Oid ouid;
@@ -4854,10 +4854,10 @@ PostgresMain(int argc, char *argv[],
 					numSlices = pq_getmsgint(&input_message, 4);
 					if (numSlices > 0)
 					{
-						gangIds = palloc(sizeof(int) * numSlices);
+						sliceIndexGangIdMap = palloc(sizeof(int) * numSlices);
 						for (i = 0; i < numSlices; ++i)
 						{
-							gangIds[i] = pq_getmsgint(&input_message, 4);
+							sliceIndexGangIdMap[i] = pq_getmsgint(&input_message, 4);
 						}
 					}
 
@@ -4870,11 +4870,11 @@ PostgresMain(int argc, char *argv[],
 
 						for (localSlice = 0; localSlice < numSlices; ++localSlice)
 						{
-							if (gangIds[localSlice] == qe_gang_id)
+							if (sliceIndexGangIdMap[localSlice] == qe_gang_id)
 								break;
 						}
 
-						pfree(gangIds);
+						pfree(sliceIndexGangIdMap);
 					}
 
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
