@@ -54,9 +54,9 @@ static void cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
 								 DispatchCommandDtxProtocolParms *pDtxProtocolParms);
 
 static char *
-PQbuildGpDtxProtocolCommand(MemoryContext cxt,
-							DispatchCommandDtxProtocolParms * pDtxProtocolParms,
-							int *finalLen);
+buildGpDtxProtocolCommand(MemoryContext cxt,
+						  DispatchCommandDtxProtocolParms * pDtxProtocolParms,
+						  int *finalLen);
 
 /*
  * cdbdisp_dispatchDtxProtocolCommand:
@@ -328,9 +328,7 @@ cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
 
 	oldContext = MemoryContextSwitchTo(ds->dispatchStateContext);
 
-	char *queryText =
-		PQbuildGpDtxProtocolCommand(ds->dispatchStateContext,
-									pDtxProtocolParms, &len);
+	char *queryText = buildGpDtxProtocolCommand(ds->dispatchStateContext, pDtxProtocolParms, &len);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -346,9 +344,9 @@ cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
  * Build a dtx protocol command string to be dispatched to QE.
  */
 static char *
-PQbuildGpDtxProtocolCommand(MemoryContext cxt,
-							DispatchCommandDtxProtocolParms *
-							pDtxProtocolParms, int *finalLen)
+buildGpDtxProtocolCommand(MemoryContext cxt,
+						  DispatchCommandDtxProtocolParms * pDtxProtocolParms,
+						  int *finalLen)
 {
 	int	dtxProtocolCommand = (int) pDtxProtocolParms->dtxProtocolCommand;
 	int	flags = pDtxProtocolParms->flags;

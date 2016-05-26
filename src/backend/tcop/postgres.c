@@ -4739,7 +4739,7 @@ PostgresMain(int argc, char *argv[],
 					send_ready_for_query = true;
 				}
 				break;
-            case 'M':           /* MPP dispatched stmt from QD */
+            case 'M': /* MPP dispatched stmt from QD */
 				{
 					/* This is exactly like 'Q' above except we peel off and
 					 * set the snapshot information right away.
@@ -4765,24 +4765,23 @@ PostgresMain(int argc, char *argv[],
 					int serializedSliceInfolen = 0;
 					int seqServerHostlen = 0;
 					int seqServerPort = -1;
-					
-					int		localSlice;
-					int		rootIdx;
-					int		primary_gang_id;
+
+					int localSlice, i;
+					int rootIdx;
+					int primary_gang_id;
+					int numSlices;
+					int *gangIds;
 					TimestampTz statementStart;
-					Oid 	suid;
-					Oid 	ouid;
-					Oid 	cuid;
-					bool	suid_is_super = false;
-					bool	ouid_is_super = false;
+					Oid suid;
+					Oid ouid;
+					Oid cuid;
+					bool suid_is_super = false;
+					bool ouid_is_super = false;
 
 					int unusedFlags;
 
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
- 					
-					/* get the slice number# */
-					localSlice = pq_getmsgint(&input_message, 4);
 
 					/* get the client command serial# */
 					gp_command_count = pq_getmsgint(&input_message, 4);
@@ -4857,8 +4856,32 @@ PostgresMain(int argc, char *argv[],
 					if (seqServerHostlen > 0)
 						seqServerHost = pq_getmsgbytes(&input_message, seqServerHostlen);
 
+					numSlices = pq_getmsgint(&input_message, 4);
+					if (numSlices > 0)
+					{
+						gangIds = palloc(sizeof(int) * numSlices);
+						for (i = 0; i < numSlices; ++i)
+						{
+							gangIds[i] = pq_getmsgint(&input_message, 4);
+						}
+					}
+
 					pq_getmsgend(&input_message);
-					 
+
+					/* get the slice number# */
+					if (numSlices > 0)
+					{
+						Assert(qe_gang_id > 0);
+
+						for (localSlice = 0; localSlice < numSlices; ++localSlice)
+						{
+							if (gangIds[localSlice] == qe_gang_id)
+								break;
+						}
+
+						pfree(gangIds);
+					}
+
 					elog((Debug_print_full_dtm ? LOG : DEBUG5), "MPP dispatched stmt from QD: %s.",query_string);
 
 					if (suid > 0)				

@@ -60,6 +60,9 @@ typedef struct Gang
 	MemoryContext perGangContext;
 } Gang;
 
+extern int qe_gang_id;
+
+
 extern Gang *allocateReaderGang(GangType type, char *portal_name);
 
 extern Gang *allocateWriterGang(void);

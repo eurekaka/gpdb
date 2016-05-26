@@ -78,6 +78,10 @@ typedef struct DispatchCommandQueryParms
 	int seqServerHostlen;
 	int seqServerPort; /* If seqServerHost non-null, sequence server port. */
 
+	/* the map from sliceIndex to gang_id, in array form */
+	int numSlices;
+	int *gangIds;
+
 	/*
 	 * Used by dispatch agent if NOT using sliced execution
 	 */
@@ -108,10 +112,10 @@ fillSliceVector(SliceTable *sliceTable,
 				int len);
 
 static char *
-PQbuildGpQueryString(MemoryContext cxt,
-					 DispatchCommandParms * pParms,
-					 DispatchCommandQueryParms * pQueryParms,
-					 int *finalLen);
+buildGpQueryString(MemoryContext cxt,
+				   DispatchCommandParms * pParms,
+				   DispatchCommandQueryParms * pQueryParms,
+				   int *finalLen);
 
 static void
 cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
@@ -123,9 +127,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds);
 
+static int *
+buildGangIdsFromSliceTable(SliceTable *sliceTbl);
+
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
- * within a complete parallel plan.  (A plan tree will correspond either
+ * within a complete parallel plan. (A plan tree will correspond either
  * to an initPlan or to the main plan.)
  *
  * If cancelOnError is true, then any dispatching error, a cancellation
@@ -133,7 +140,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * may cause the unfinished portion of the plan to be abandoned or canceled;
  * and in the event this occurs before all gangs have been dispatched, this
  * function does not return, but waits for all QEs to stop and exits to
- * the caller's error catcher via ereport(ERROR,...).  Otherwise this
+ * the caller's error catcher via ereport(ERROR,...).Otherwise this
  * function returns normally and errors are not reported until later.
  *
  * If cancelOnError is false, the plan is to be dispatched as fully as
@@ -141,11 +148,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * requests, errors or connection failures from other QEs, etc.
  *
  * The CdbDispatchResults objects allocated for the plan are returned
- * in *pPrimaryResults.  The caller, after calling
+ * in *pPrimaryResults. The caller, after calling
  * CdbCheckDispatchResult(), can examine the CdbDispatchResults
  * objects, can keep them as long as needed, and ultimately must free
  * them with cdbdisp_destroyDispatcherState() prior to deallocation of
- * the caller's memory context.  Callers should use PG_TRY/PG_CATCH to
+ * the caller's memory context. Callers should use PG_TRY/PG_CATCH to
  * ensure proper cleanup.
  *
  * To wait for completion, check for errors, and clean up, it is
@@ -205,7 +212,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			&& rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
 	/*
-	 * Keep old value so we can restore it.  We use this field as a parameter.
+	 * Keep old value so we can restore it. We use this field as a parameter.
 	 */
 	oldLocalSlice = sliceTbl->localSlice;
 
@@ -324,9 +331,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		ParamListInfoData *pli;
 		ParamExternData *pxd;
 		StringInfoData parambuf;
-		Size		length;
-		int			plioff;
-		int32		iparam;
+		Size length;
+		int	plioff;
+		int32 iparam;
 
 		/*
 		 * Allocate buffer for params
@@ -347,8 +354,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 */
 		for (iparam = 0; iparam < queryDesc->params->numParams; iparam++)
 		{
-			int16		typlen;
-			bool		typbyval;
+			int16 typlen;
+			bool typbyval;
 
 			/*
 			 * Recompute pli each time in case parambuf.data is repalloc'ed 
@@ -362,7 +369,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
 			if (!typbyval)
 			{
-				char	   *s = DatumGetPointer(pxd->value);
+				char *s = DatumGetPointer(pxd->value);
 
 				if (pxd->isnull || !PointerIsValid(s))
 				{
@@ -441,6 +448,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
+
+	queryParms.numSlices = list_length(sliceTbl->slices);
+	queryParms.gangIds = buildGangIdsFromSliceTable(sliceTbl);
 
 	cdbdisp_dispatchX(&queryParms, cancelOnError, sliceTbl, ds);
 
@@ -811,9 +821,8 @@ cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 
 	Assert(pQueryParms->strCommand != NULL);
 
-	char *queryText =
-		PQbuildGpQueryString(ds->dispatchStateContext, pParms, pQueryParms,
-							 &len);
+	char *queryText = buildGpQueryString(ds->dispatchStateContext,
+										 pParms, pQueryParms, &len);
 
 	if (pQueryParms->serializedQuerytree != NULL)
 	{
@@ -849,6 +858,12 @@ cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 	{
 		pfree(pQueryParms->seqServerHost);
 		pQueryParms->seqServerHost = NULL;
+	}
+
+	if (pQueryParms->gangIds != NULL)
+	{
+		pfree(pQueryParms->gangIds);
+		pQueryParms->gangIds = NULL;
 	}
 
 	for (i = 0; i < dThreads->dispatchCommandParmsArSize; i++)
@@ -1016,8 +1031,8 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx,
  * Build a query string to be dispatched bo QE.
  */
 static char *
-PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
-					 DispatchCommandQueryParms * pQueryParms, int *finalLen)
+buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
+				   DispatchCommandQueryParms * pQueryParms, int *finalLen)
 {
 	const char *command = pQueryParms->strCommand;
 	int command_len = strlen(pQueryParms->strCommand) + 1;
@@ -1032,12 +1047,13 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	const char *snapshotInfo = pQueryParms->serializedDtxContextInfo;
 	int	snapshotInfo_len = pQueryParms->serializedDtxContextInfolen;
 	int	flags = 0; /* unused flags */
-	int	localSlice = 0; /* localSlice; place holder; set later in dupQueryTextAndSetSliceId */
 	int	rootIdx = pQueryParms->rootIdx;
 	const char *seqServerHost = pQueryParms->seqServerHost;
 	int	seqServerHostlen = pQueryParms->seqServerHostlen;
 	int	seqServerPort = pQueryParms->seqServerPort;
 	int	primary_gang_id = pQueryParms->primary_gang_id;
+	int numSlices = pQueryParms->numSlices;
+	int *gangIds = pQueryParms->gangIds;
 	int64 currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
 	Oid	sessionUserId = GetSessionUserId();
 	Oid	outerUserId = GetOuterUserId();
@@ -1045,8 +1061,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	bool sessionUserIsSuper = superuser_arg(GetSessionUserId());
 	bool outerUserIsSuper = superuser_arg(GetSessionUserId());
 
-	int	tmp,
-		len;
+	int	tmp, len, i;
 	uint32 n32;
 	int	total_query_len;
 	char *shared_query,
@@ -1060,7 +1075,6 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 		sizeof(sessionUserId) + 1 /* sessionUserIsSuper */	+
 		sizeof(outerUserId) + 1 /* outerUserIsSuper */	+
 		sizeof(currentUserId) +
-		sizeof(localSlice) +
 		sizeof(rootIdx) +
 		sizeof(primary_gang_id) +
 		sizeof(n32) * 2 /* currentStatementStartTimestamp */  +
@@ -1076,7 +1090,12 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 		sizeof(seqServerPort) +
 		command_len +
 		querytree_len +
-		plantree_len + params_len + sliceinfo_len + seqServerHostlen;
+		plantree_len +
+		params_len +
+		sliceinfo_len +
+		seqServerHostlen +
+		sizeof(numSlices) +
+		sizeof(int) * numSlices;
 
 	shared_query = MemoryContextAlloc(cxt, total_query_len);
 
@@ -1085,10 +1104,6 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	*pos++ = 'M';
 
 	pos += 4; /* place holder for message length */
-
-	tmp = htonl(localSlice);
-	memcpy(pos, &tmp, sizeof(localSlice));
-	pos += sizeof(localSlice);
 
 	tmp = htonl(gp_command_count);
 	memcpy(pos, &tmp, sizeof(gp_command_count));
@@ -1217,6 +1232,20 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	{
 		memcpy(pos, seqServerHost, seqServerHostlen);
 		pos += seqServerHostlen;
+	}
+
+	tmp = htonl(numSlices);
+	memcpy(pos, &tmp, sizeof(tmp));
+	pos += sizeof(tmp);
+
+	if (numSlices > 0)
+	{
+		for (i = 0; i < numSlices; ++i)
+		{
+			tmp = htonl(gangIds[i]);
+			memcpy(pos, &tmp, sizeof(tmp));
+			pos += sizeof(tmp);
+		}
 	}
 
 	len = pos - shared_query - 1;
@@ -1629,4 +1658,31 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt,
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+}
+
+static int *
+buildGangIdsFromSliceTable(SliceTable *sliceTbl)
+{
+	Assert(sliceTbl != NULL);
+
+	int numSlices = list_length(sliceTbl->slices);
+	/* would be freed in buildGpQueryString */
+	int *gangIds = palloc0(numSlices * sizeof(int));
+
+	if (gangIds == NULL)
+		return NULL;
+
+	ListCell *cell = NULL;
+	Slice *slice = NULL;
+	foreach(cell, sliceTbl->slices)
+	{
+		slice = (Slice *) lfirst(cell);
+
+		if (slice->primaryGang == NULL)
+			continue;
+
+		gangIds[slice->sliceIndex] = slice->primaryGang->gang_id;
+	}
+
+	return gangIds;
 }
