@@ -81,11 +81,6 @@ typedef struct DispatchCommandQueryParms
 	/* the map from sliceIndex to gang_id, in array form */
 	int numSlices;
 	int *gangIds;
-
-	/*
-	 * Used by dispatch agent if NOT using sliced execution
-	 */
-	int primary_gang_id;
 } DispatchCommandQueryParms;
 
 static void stripPlanBeforeDispatch(PlannedStmt *plan);
@@ -403,9 +398,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		sparams_len = 0;
 	}
 
-	ssliceinfo =
-		serializeNode((Node *) sliceTbl, &ssliceinfo_len,
-					  NULL /*uncompressed_size */ );
+	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len, NULL /*uncompressed_size */ );
 
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = queryDesc->sourceText;
@@ -427,8 +420,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.seqServerHost = pstrdup(qdinfo->hostip);
 	queryParms.seqServerHostlen = strlen(qdinfo->hostip) + 1;
 	queryParms.seqServerPort = seqServerCtl->seqServerPort;
-
-	queryParms.primary_gang_id = 0;		/* We are relying on the slice table to provide gang ids */
 
 	/*
 	 * serialized a version of our snapshot
@@ -562,8 +553,6 @@ cdbdisp_dispatchCommand(const char *strCommand,
 	primaryGang = allocateWriterGang();
 
 	Assert(primaryGang);
-
-	queryParms.primary_gang_id = primaryGang->gang_id;
 
 	/*
 	 * Serialize a version of our DTX Context Info
@@ -804,9 +793,6 @@ stripPlanBeforeDispatch(PlannedStmt *plan)
  * Allocate query text in memory context, initialize it and assign it to
  * all DispatchCommandQueryParms in this dispatcher state.
  *
- * For now, there's only one field (localSlice) which is different to each
- * dispatcher thread, we set it later.
- *
  * Also, we free the DispatchCommandQueryParms memory.
  */
 static void
@@ -875,7 +861,7 @@ cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
 }
 
 /*
- * Three Helper functions for CdbDispatchPlan:
+ * Three Helper functions for cdbdisp_dispatchX:
  *
  * Used to figure out the dispatch order for the sliceTable by
  * counting the number of dependent child slices for each slice; and
@@ -906,9 +892,9 @@ compare_slice_order(const void *aa, const void *bb)
 	/*
 	 * sort the writer gang slice first, because he sets the shared snapshot
 	 */
-	if (a->slice->primary_gang_id == 1 && b->slice->primary_gang_id != 1)
+	if (a->slice->primaryGang->gang_id == 1 && b->slice->primaryGang->gang_id != 1)
 		return -1;
-	else if (b->slice->primary_gang_id == 1 && a->slice->primary_gang_id != 1)
+	else if (b->slice->primaryGang->gang_id == 1 && a->slice->primaryGang->gang_id != 1)
 		return 1;
 
 	if (a->children == b->children)
@@ -995,15 +981,14 @@ markbit_dep_children(SliceTable * sliceTable, int sliceIdx,
  * Count how many dependent childrens and fill in the sliceVector of dependent childrens.
  */
 static int
-count_dependent_children(SliceTable * sliceTable, int sliceIndex,
-						 sliceVec * sliceVector, int len)
+count_dependent_children(SliceTable *sliceTable, int sliceIndex,
+						 sliceVec *sliceVector, int len)
 {
 	int	ret = 0;
 	int	bitmasklen = (len + 7) >> 3;
 	char *bitmask = palloc0(bitmasklen);
 
-	ret = markbit_dep_children(sliceTable, sliceIndex,
-							   sliceVector, bitmasklen, bitmask);
+	ret = markbit_dep_children(sliceTable, sliceIndex, sliceVector, bitmasklen, bitmask);
 	pfree(bitmask);
 
 	return ret;
@@ -1019,8 +1004,7 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx,
 	 * count doesn't include top slice add 1, note that sliceVector would be
 	 * modified in place by count_dependent_children.
 	 */
-	top_count =
-		1 + count_dependent_children(sliceTbl, rootIdx, sliceVector, sliceLim);
+	top_count = 1 + count_dependent_children(sliceTbl, rootIdx, sliceVector, sliceLim);
 
 	qsort(sliceVector, sliceLim, sizeof(sliceVec), compare_slice_order);
 
@@ -1031,8 +1015,8 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx,
  * Build a query string to be dispatched bo QE.
  */
 static char *
-buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
-				   DispatchCommandQueryParms * pQueryParms, int *finalLen)
+buildGpQueryString(MemoryContext cxt, DispatchCommandParms *pParms,
+				   DispatchCommandQueryParms *pQueryParms, int *finalLen)
 {
 	const char *command = pQueryParms->strCommand;
 	int command_len = strlen(pQueryParms->strCommand) + 1;
@@ -1051,7 +1035,6 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	const char *seqServerHost = pQueryParms->seqServerHost;
 	int	seqServerHostlen = pQueryParms->seqServerHostlen;
 	int	seqServerPort = pQueryParms->seqServerPort;
-	int	primary_gang_id = pQueryParms->primary_gang_id;
 	int numSlices = pQueryParms->numSlices;
 	int *gangIds = pQueryParms->gangIds;
 	int64 currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
@@ -1076,7 +1059,6 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 		sizeof(outerUserId) + 1 /* outerUserIsSuper */	+
 		sizeof(currentUserId) +
 		sizeof(rootIdx) +
-		sizeof(primary_gang_id) +
 		sizeof(n32) * 2 /* currentStatementStartTimestamp */  +
 		sizeof(command_len) +
 		sizeof(querytree_len) +
@@ -1136,10 +1118,6 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	memcpy(pos, &tmp, sizeof(rootIdx));
 	pos += sizeof(rootIdx);
 
-	tmp = htonl(primary_gang_id);
-	memcpy(pos, &tmp, sizeof(primary_gang_id));
-	pos += sizeof(primary_gang_id);
-
 	/*
 	 * High order half first, since we're doing MSB-first 
 	 */
@@ -1198,11 +1176,8 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	memcpy(pos, &tmp, sizeof(tmp));
 	pos += sizeof(tmp);
 
-	if (command_len > 0)
-	{
-		memcpy(pos, command, command_len);
-		pos += command_len;
-	}
+	memcpy(pos, command, command_len);
+	pos += command_len;
 
 	if (querytree_len > 0)
 	{
@@ -1266,10 +1241,7 @@ buildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 }
 
 /*
- * This code was refactored out of cdbdisp_dispatchPlan.  It's
- * used both for dispatching plans when we are using normal gangs,
- * and for dispatching all statements from Query Dispatch Agents
- * when we are using dispatch agents.
+ * This function is used for dispatching sliced plans
  */
 static void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
@@ -1277,38 +1249,28 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds)
 {
-	int			oldLocalSlice = 0;
-	sliceVec   *sliceVector = NULL;
-	int			nSlices = 1;
-	int			sliceLim = 1;
-	int			iSlice;
-	int			rootIdx = pQueryParms->rootIdx;
+	sliceVec *sliceVector = NULL;
+	int nSlices = 1; /* total slices this dispatch cares about */
+	int sliceLim = 1; /* total slices in sliceTbl*/
+	int iSlice;
+	int rootIdx = pQueryParms->rootIdx;
 
 	if (log_dispatch_stats)
 		ResetUsage();
 
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(sliceTbl != NULL);
+	Assert(rootIdx == 0 ||
+		   (rootIdx > sliceTbl->nMotions &&
+			rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
-	if (sliceTbl)
-	{
-		Assert(rootIdx == 0 ||
-			   (rootIdx > sliceTbl->nMotions &&
-				rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
+	/*
+	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
+	 * vector of slice indexes specifying the order of [potential] dispatch.
+	 */
+	sliceLim = list_length(sliceTbl->slices);
+	sliceVector = palloc0(sliceLim * sizeof(sliceVec));
 
-		/*
-		 * Keep old value so we can restore it.  We use this field as a parameter.
-		 */
-		oldLocalSlice = sliceTbl->localSlice;
-
-		/*
-		 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
-		 * vector of slice indexes specifying the order of [potential] dispatch.
-		 */
-		sliceLim = list_length(sliceTbl->slices);
-		sliceVector = palloc0(sliceLim * sizeof(sliceVec));
-
-		nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
-	}
+	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
 
 	/*
 	 * Allocate result array with enough slots for QEs of primary gangs.
@@ -1316,8 +1278,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	ds->primaryResults = NULL;
 	ds->dispatchThreads = NULL;
 
-	cdbdisp_makeDispatcherState(ds, nSlices * largestGangsize(), sliceLim,
-								cancelOnError);
+	cdbdisp_makeDispatcherState(ds, nSlices * largestGangsize(), nSlices, cancelOnError);
 	cdbdisp_queryParmsInit(ds, pQueryParms);
 
 	cdb_total_plans++;
@@ -1325,22 +1286,16 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	if (nSlices > cdb_max_slices)
 		cdb_max_slices = nSlices;
 
-	/*
-	 * must have somebody to dispatch to.
-	 */
-	Assert(sliceTbl != NULL || pQueryParms->primary_gang_id > 0);
-
 	if (DEBUG1 >= log_min_messages)
 	{
-		char		msec_str[32];
+		char msec_str[32];
 
 		switch (check_log_duration(msec_str, false))
 		{
 			case 1:
 			case 2:
 				ereport(LOG,
-						(errmsg
-						 ("duration to start of dispatch send (root %d): %s ms",
+						(errmsg("duration to start of dispatch send (root %d): %s ms",
 						  pQueryParms->rootIdx, msec_str)));
 				break;
 		}
@@ -1349,81 +1304,46 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
 		CdbDispatchDirectDesc direct;
-		Gang	   *primaryGang = NULL;
-		Slice	   *slice = NULL;
-		int			si = -1;
+		Gang *primaryGang = NULL;
+		Slice *slice = NULL;
+		int si = -1;
 
-		if (sliceVector)
+		Assert(sliceVector != NULL);
+
+		slice = sliceVector[iSlice].slice;
+		si = slice->sliceIndex;
+
+		/*
+		 * Is this a slice we should dispatch?
+		 */
+		if (slice && slice->gangType == GANGTYPE_UNALLOCATED)
 		{
+			Assert(slice->primaryGang == NULL);
 			/*
-			 * Sliced dispatch, and we are either the dispatch agent, or we are
-			 * the QD and are not using Dispatch Agents.
-			 *
-			 * So, dispatch to each slice.
+			 * Most slices are dispatched, however, in many cases the
+			 * root runs only on the QD and is not dispatched to the QEs.
 			 */
-			slice = sliceVector[iSlice].slice;
-			si = slice->sliceIndex;
+			continue;
+		}
 
-			/*
-			 * Is this a slice we should dispatch?
-			 */
-			if (slice && slice->gangType == GANGTYPE_UNALLOCATED)
-			{
-				/*
-				 * Most slices are dispatched, however, in many  cases the
-				 * root runs only on the QD and is not dispatched to the QEs.
-				 */
-				continue;
-			}
+		primaryGang = slice->primaryGang;
+		Assert(primaryGang != NULL);
 
-			primaryGang = slice->primaryGang;
+		if (slice->directDispatch.isDirectDispatch)
+		{
+			direct.directed_dispatch = true;
+			Assert(list_length(slice->directDispatch.contentIds) == 1);
+			direct.count = 1;
 
 			/*
-			 * If we are on the dispatch agent, the gang pointers aren't filled in.
-			 * We must look them up by ID
+			 * We only support single content right now. If this changes then we need to change from
+			 * a list to another structure to avoid n^2 cases
 			 */
-			if (primaryGang == NULL)
+			direct.content[0] = linitial_int(slice->directDispatch.contentIds);
+
+			if (Test_print_direct_dispatch_info)
 			{
-				elog(DEBUG2, "Dispatch %d, Gangs are %d, type=%d", iSlice,
-					 slice->primary_gang_id, slice->gangType);
-				primaryGang = findGangById(slice->primary_gang_id);
-
-				Assert(primaryGang != NULL);
-				if (primaryGang != NULL)
-					Assert(primaryGang->type == slice->gangType
-						   || primaryGang->type == GANGTYPE_PRIMARY_WRITER);
-
-				if (primaryGang == NULL)
-					continue;
-			}
-
-			if (slice->directDispatch.isDirectDispatch)
-			{
-				direct.directed_dispatch = true;
-				direct.count = list_length(slice->directDispatch.contentIds);
-
-				/*
-				 * only support single content right now.  If this changes then we need to change from
-				 * a list to another structure to avoid n^2 cases
-				 */
-				Assert(direct.count == 1);
-				direct.content[0] =
-					linitial_int(slice->directDispatch.contentIds);
-
-				if (Test_print_direct_dispatch_info)
-				{
-					elog(INFO, "Dispatch command to SINGLE content");
-				}
-			}
-			else
-			{
-				direct.directed_dispatch = false;
-				direct.count = 0;
-
-				if (Test_print_direct_dispatch_info)
-				{
-					elog(INFO, "Dispatch command to ALL contents");
-				}
+				elog(INFO, "Dispatch command to SINGLE content");
 			}
 		}
 		else
@@ -1435,22 +1355,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			{
 				elog(INFO, "Dispatch command to ALL contents");
 			}
-
-			/*
-			 *	Non-sliced, used specified gangs
-			 */
-			elog(DEBUG2, "primary %d", pQueryParms->primary_gang_id);
-			if (pQueryParms->primary_gang_id > 0)
-				primaryGang = findGangById(pQueryParms->primary_gang_id);
-		}
-
-		/*
-		 * Must have a gang to dispatch to
-		 */
-		Assert(primaryGang != NULL);	
-		if (primaryGang)
-		{
-			Assert(ds->primaryResults && ds->primaryResults->resultArray);
 		}
 
 		/*
@@ -1464,24 +1368,13 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				break;
 		}
 
-		/*
-		 * Dispatch the plan to our primaryGang.
-		 * Doesn't wait for it to finish.
-		 */
-		if (primaryGang != NULL)
-		{
-			if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
-				ds->primaryResults->writer_gang = primaryGang;
+		if (primaryGang->type == GANGTYPE_PRIMARY_WRITER)
+			ds->primaryResults->writer_gang = primaryGang;
 
-			cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
-		}
+		cdbdisp_dispatchToGang(ds, primaryGang, si, &direct);
 	}
 
-	if (sliceVector)
-		pfree(sliceVector);
-
-	if (sliceTbl)
-		sliceTbl->localSlice = oldLocalSlice;
+	pfree(sliceVector);
 
 	/*
 	 * If bailed before completely dispatched, stop QEs and throw error.
@@ -1489,8 +1382,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	if (iSlice < nSlices)
 	{
 		elog(Debug_cancel_print ? LOG : DEBUG2,
-			 "Plan dispatch canceled; dispatched %d of %d slices", iSlice,
-			 nSlices);
+			 "Plan dispatch canceled; dispatched %d of %d slices",
+			 iSlice, nSlices);
 
 		/*
 		 * Cancel any QEs still running, and wait for them to terminate.
@@ -1517,15 +1410,14 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 	if (DEBUG1 >= log_min_messages)
 	{
-		char		msec_str[32];
+		char msec_str[32];
 
 		switch (check_log_duration(msec_str, false))
 		{
 			case 1:
 			case 2:
 				ereport(LOG,
-						(errmsg
-						 ("duration to dispatch out (root %d): %s ms",
+						(errmsg("duration to dispatch out (root %d): %s ms",
 						  pQueryParms->rootIdx, msec_str)));
 				break;
 		}
@@ -1571,8 +1463,6 @@ cdbdisp_dispatchSetCommandToAllGangs(const char *strCommand,
 	primaryGang = allocateWriterGang();
 
 	Assert(primaryGang);
-
-	queryParms.primary_gang_id = primaryGang->gang_id;
 
 	/*
 	 * serialized a version of our snapshot

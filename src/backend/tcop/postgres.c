@@ -4768,7 +4768,6 @@ PostgresMain(int argc, char *argv[],
 
 					int localSlice, i;
 					int rootIdx;
-					int primary_gang_id;
 					int numSlices;
 					int *gangIds;
 					TimestampTz statementStart;
@@ -4800,8 +4799,6 @@ PostgresMain(int argc, char *argv[],
 					
 					rootIdx = pq_getmsgint(&input_message, 4);
 
-					primary_gang_id = pq_getmsgint(&input_message, 4);
-
 					statementStart = pq_getmsgint64(&input_message);
 					/*
 					 * Should we set the CurrentStatementStartTimestamp to the 
@@ -4811,8 +4808,6 @@ PostgresMain(int argc, char *argv[],
 					 * 
 					 * Or both?
 					 */
-					//SetCurrentStatementStartTimestampToMaster(statementStart);
-					
 					/* read ser string lengths */
 					query_string_len = pq_getmsgint(&input_message, 4);
 					serializedQuerytreelen = pq_getmsgint(&input_message, 4);
@@ -4952,7 +4947,6 @@ PostgresMain(int argc, char *argv[],
 					const char *gid;
 
 					DistributedTransactionId gxid;
-					int	primary_gang_id;
 					int serializedSnapshotlen;
 					const char *serializedSnapshot;
 
@@ -4980,8 +4974,6 @@ PostgresMain(int argc, char *argv[],
 					/* get the distributed transaction id */
 					gxid = (DistributedTransactionId) pq_getmsgint(&input_message, 4);
 					
-					primary_gang_id = pq_getmsgint(&input_message, 4);
-
 					serializedSnapshotlen = pq_getmsgint(&input_message, 4);
 
 					/* read in the snapshot info/ DtxContext */
@@ -4993,18 +4985,14 @@ PostgresMain(int argc, char *argv[],
 					/*
 					 * This is for debugging.  Otherwise we don't need to deserialize this
 					 */
-					DtxContextInfo_Deserialize(
-							serializedSnapshot, serializedSnapshotlen,
-							&TempDtxContextInfo);
+					DtxContextInfo_Deserialize(serializedSnapshot, serializedSnapshotlen, &TempDtxContextInfo);
 
 					pq_getmsgend(&input_message);
 
 					// Do not touch DTX context.
-
 					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid, &TempDtxContextInfo);
 
 					send_ready_for_query = true;
-
             	}
 				break;
 

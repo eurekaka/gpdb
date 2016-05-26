@@ -226,10 +226,6 @@ typedef struct Slice
 
 	struct Gang *primaryGang;
 
-	/* tell dispatch agents which gang we're talking about.*/
-	int primary_gang_id;
-
-
 	/*
 	 * A list of CDBProcess nodes corresponding to the worker processes allocated
 	 * to implement this plan slice.
