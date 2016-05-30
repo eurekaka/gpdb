@@ -109,8 +109,7 @@ static void checkConnectionStatus(Gang* gp, int* countInRecovery,
 		int* countSuccessful);
 static bool isPrimaryWriterGangAlive(void);
 static void *thread_DoConnect(void *arg);
-static void build_gpqeid_param(char *buf, int bufsz, int segIndex,
-		bool is_writer);
+static void build_gpqeid_param(char *buf, int bufsz, int segIndex, bool is_writer);
 static Gang *createGang(GangType type, int gang_id, int size, int content);
 static void disconnectAndDestroyGang(Gang *gp);
 static void disconnectAndDestroyAllReaderGangs(bool destroyAllocated);
@@ -935,8 +934,6 @@ static void addOptions(StringInfo string, bool iswriter)
 	appendStringInfo(string, " -c gp_qd_hostname=%s", qdinfo->hostip);
 	appendStringInfo(string, " -c gp_qd_port=%d", qdinfo->port);
 
-	appendStringInfo(string, " -c gp_qd_callback_info=port=%d", PostPortNumber);
-
 	/*
 	 * Transactions are tricky.
 	 * Here is the copy and pasted code, and we know they are working.
@@ -1033,8 +1030,7 @@ static void destroyConnectParms(DoConnectParms *doConnectParmsAr, int count)
  * to be passed to a qExec that is being started.  NB: Can be called in a
  * thread, so mustn't use palloc/elog/ereport/etc.
  */
-static void build_gpqeid_param(char *buf, int bufsz, int segIndex,
-		bool is_writer)
+static void build_gpqeid_param(char *buf, int bufsz, int segIndex, bool is_writer)
 {
 #ifdef HAVE_INT64_TIMESTAMP
 #define TIMESTAMP_FORMAT INT64_FORMAT
@@ -1048,7 +1044,7 @@ static void build_gpqeid_param(char *buf, int bufsz, int segIndex,
 
 	snprintf(buf, bufsz, "%d;%d;" TIMESTAMP_FORMAT ";%s", gp_session_id,
 			segIndex, PgStartTime, (is_writer ? "true" : "false"));
-} /* build_gpqeid_params */
+}
 
 static bool gpqeid_next_param(char **cpp, char **npp)
 {
@@ -1076,7 +1072,7 @@ static bool gpqeid_next_param(char **cpp, char **npp)
  * inherited from the postmaster; etc; so don't try to do too much in here.
  */
 void cdbgang_parse_gpqeid_params(struct Port * port __attribute__((unused)),
-		const char *gpqeid_value)
+								 const char *gpqeid_value)
 {
 	char *gpqeid = pstrdup(gpqeid_value);
 	char *cp;
@@ -1120,53 +1116,7 @@ void cdbgang_parse_gpqeid_params(struct Port * port __attribute__((unused)),
 
 bad:
 	elog(FATAL, "Segment dispatched with invalid option: 'gpqeid=%s'", gpqeid_value);
-} /* cdbgang_parse_gpqeid_params */
-
-/*
- * TODO: Dead code: remove it.
- */
-void cdbgang_parse_gpqdid_params(struct Port * port __attribute__((unused)),
-		const char *gpqdid_value)
-{
-	char *gpqdid = pstrdup(gpqdid_value);
-	char *cp;
-	char *np = gpqdid;
-
-	/*
-	 * The presence of an gpqdid string means this is a callback from QE to
-	 * QD.
-	 */
-	SetConfigOption("gp_is_callback", "true", PGC_POSTMASTER, PGC_S_OVERRIDE);
-
-	/* gp_session_id */
-	if (gpqeid_next_param(&cp, &np))
-		SetConfigOption("gp_session_id", cp, PGC_POSTMASTER, PGC_S_OVERRIDE);
-
-	/* PgStartTime */
-	if (gpqeid_next_param(&cp, &np))
-	{
-#ifdef HAVE_INT64_TIMESTAMP
-		if (!scanint8(cp, true, &PgStartTime))
-			goto bad;
-#else
-		PgStartTime = strtod(cp, NULL);
-#endif
-	}
-	Assert(gp_is_callback);
-
-	/* Too few items, or too many? */
-	if (!cp || np)
-		goto bad;
-
-	if (gp_session_id <= 0 || PgStartTime <= 0)
-		goto bad;
-
-	pfree(gpqdid);
-	return;
-
-bad:
-	elog(FATAL, "Master callback dispatched with invalid option: 'gpqdid=%s'", gpqdid_value);
-} /* cdbgang_parse_gpqdid_params */
+}
 
 /*
  * This is where we keep track of all the gangs that exist for this session.

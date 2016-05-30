@@ -104,9 +104,6 @@ static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
 
-bool		gp_use_snapshop_during_callback = true;
-
-
 /* =================== interface functions =================== */
 
 int

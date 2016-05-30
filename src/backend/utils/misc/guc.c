@@ -5206,8 +5206,7 @@ SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch)
 					  is_local,
 					  true);
 
-	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode() &&
-			strcmp(name,"gp_use_dispatch_agent")!=0)
+	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 	{
 
 		ListCell * l;
@@ -5320,8 +5319,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 					  is_local,
 					  true);
 
-    if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode() &&
-        strcmp(name, "gp_use_dispatch_agent") != 0)
+    if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
     {
 			StringInfoData buffer;
 			initStringInfo(&buffer);
