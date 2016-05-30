@@ -1026,8 +1026,8 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	int	params_len = pQueryParms->serializedParamslen;
 	const char *sliceinfo = pQueryParms->serializedSliceInfo;
 	int	sliceinfo_len = pQueryParms->serializedSliceInfolen;
-	const char *snapshotInfo = pQueryParms->serializedDtxContextInfo;
-	int	snapshotInfo_len = pQueryParms->serializedDtxContextInfolen;
+	const char *dtxContextInfo = pQueryParms->serializedDtxContextInfo;
+	int	dtxContextInfo_len = pQueryParms->serializedDtxContextInfolen;
 	int	flags = 0; /* unused flags */
 	int	localSlice = 0; /* localSlice; placeholder; set later in dupQueryTextAndSetSliceId */
 	int	rootIdx = pQueryParms->rootIdx;
@@ -1066,8 +1066,8 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 		sizeof(plantree_len) +
 		sizeof(params_len) +
 		sizeof(sliceinfo_len) +
-		sizeof(snapshotInfo_len) +
-		snapshotInfo_len +
+		sizeof(dtxContextInfo_len) +
+		dtxContextInfo_len +
 		sizeof(flags) +
 		sizeof(seqServerHostlen) +
 		sizeof(seqServerPort) +
@@ -1158,14 +1158,14 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	memcpy(pos, &tmp, sizeof(tmp));
 	pos += sizeof(tmp);
 
-	tmp = htonl(snapshotInfo_len);
+	tmp = htonl(dtxContextInfo_len);
 	memcpy(pos, &tmp, sizeof(tmp));
 	pos += sizeof(tmp);
 
-	if (snapshotInfo_len > 0)
+	if (dtxContextInfo_len > 0)
 	{
-		memcpy(pos, snapshotInfo, snapshotInfo_len);
-		pos += snapshotInfo_len;
+		memcpy(pos, dtxContextInfo, dtxContextInfo_len);
+		pos += dtxContextInfo_len;
 	}
 
 	tmp = htonl(flags);

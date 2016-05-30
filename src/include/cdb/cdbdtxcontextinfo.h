@@ -42,8 +42,8 @@ extern void DtxContextInfo_CreateOnMaster(DtxContextInfo *dtxContextInfo,
 extern int DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo);
 
 extern void DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo);
-extern void DtxContextInfo_Deserialize(const char *serializedSnapshot,
-									   int serializedSnapshotlen,
+extern void DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
+									   int serializedDtxContextInfolen,
 									   DtxContextInfo *dtxContextInfo);
 
 extern void DtxContextInfo_Copy(DtxContextInfo *target, DtxContextInfo *source);
