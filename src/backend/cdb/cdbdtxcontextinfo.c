@@ -84,11 +84,9 @@ DtxContextInfo_CopyDistributedSnapshot(
 }
 
 void
-DtxContextInfo_CreateOnMaster(
-	DtxContextInfo 						*dtxContextInfo, 
-	DistributedSnapshotWithLocalMapping *dslm, 
-	CommandId							curcid,
-	int 								txnOptions)
+DtxContextInfo_CreateOnMaster(DtxContextInfo *dtxContextInfo,
+							  DistributedSnapshotWithLocalMapping *dslm,
+							  CommandId curcid, int txnOptions)
 {
 	int i;
 
@@ -131,9 +129,7 @@ DtxContextInfo_CreateOnMaster(
 		dtxContextInfo->haveDistributedSnapshot = false;
 	else
 	{
-		DtxContextInfo_CopyDistributedSnapshot(
-			&dtxContextInfo->distributedSnapshot,
-			dslm);
+		DtxContextInfo_CopyDistributedSnapshot(&dtxContextInfo->distributedSnapshot, dslm);
 		dtxContextInfo->haveDistributedSnapshot = true;
 	}
 
@@ -182,8 +178,7 @@ DtxContextInfo_CreateOnMaster(
 }
 
 static int
-DistributedHeader_SerializeSize(
-	DistributedSnapshotHeader 	*dsh)
+DistributedHeader_SerializeSize(DistributedSnapshotHeader *dsh)
 {
 	return sizeof(DistributedTransactionTimeStamp) +	// distributedTransactionTimeStamp
 		   sizeof(DistributedTransactionId) +			// xminAllDistributedSnapshots

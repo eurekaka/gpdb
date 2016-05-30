@@ -424,13 +424,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	queryParms.primary_gang_id = 0;		/* We are relying on the slice table to provide gang ids */
 
 	/*
-	 * serialized a version of our snapshot
-	 */
-	/*
-	 * Generate our transction isolations.	We generally want Plan
-	 * based dispatch to be in a global transaction. The executor gets
-	 * to decide if the special circumstances exist which allow us to
-	 * dispatch without starting a global xact.
+	 * Serialize a version of our snapshot, and generate our transction
+	 * isolations. We generally want Plan based dispatch to be in a global
+	 * transaction. The executor gets to decide if the special circumstances
+	 * exist which allow us to dispatch without starting a global xact.
 	 */
 	queryParms.serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen,

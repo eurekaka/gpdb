@@ -160,7 +160,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 {
 	char *serializedDtxContextInfo;
 
-	Snapshot snapshot;
+	Snapshot snapshot = NULL;
 	int	serializedLen;
 	DtxContextInfo *pDtxContextInfo = NULL;
 
@@ -196,7 +196,6 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 	 * statement to the qExecs and more than one needs a snapshot!
 	 */
 	*size = 0;
-	snapshot = NULL;
 
 	if (wantSnapshot)
 	{
@@ -206,11 +205,11 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 		{
 			/*
 			 * unfortunately, the dtm issues a select for prepared xacts at the
-			 * beginning and this is before a snapshot has been set up.  so we need
-			 * one for that but not for when we dont have a valid XID.
+			 * beginning and this is before a snapshot has been set up, so we need
+			 * one for that but not for when we don't have a valid XID.
 			 * 
-			 * but we CANT do this if an ABORT is in progress... instead we'll send
-			 * a NONE since the qExecs dont need the information to do a ROLLBACK.
+			 * but we CAN'T do this if an ABORT is in progress... instead we'll send
+			 * a NONE since the qExecs don't need the information to do a ROLLBACK.
 			 */
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "qdSerializeDtxContextInfo calling GetTransactionSnapshot to make snapshot");
@@ -254,8 +253,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 			if (snapshot != NULL)
 			{
 				DtxContextInfo_CreateOnMaster(&TempQDDtxContextInfo,
-											  &snapshot->
-											  distribSnapshotWithLocalMapping,
+											  &snapshot->distribSnapshotWithLocalMapping,
 											  snapshot->curcid, txnOptions);
 			}
 			else
