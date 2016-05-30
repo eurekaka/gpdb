@@ -1449,19 +1449,11 @@ CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand,
 	}
 }
 
-
-/*
- * exec_mpp_dtx_protocol_command
- *
- */
 static void
-exec_mpp_dtx_protocol_command(
-					DtxProtocolCommand 			dtxProtocolCommand,
-					int							flags,
-					const char *				loggingStr,
-					const char * 				gid,
-					DistributedTransactionId 	gxid,
-					DtxContextInfo 				*contextInfo)
+exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
+							  int flags, const char *loggingStr,
+							  const char *gid, DistributedTransactionId gxid,
+							  DtxContextInfo *contextInfo)
 {
 	CommandDest dest = whereToSendOutput;
 	const char *commandTag = loggingStr;
@@ -4967,16 +4959,11 @@ PostgresMain(int argc, char *argv[],
 					else
 						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
-					/*
-					 * This is for debugging.  Otherwise we don't need to deserialize this
-					 */
 					DtxContextInfo_Deserialize(
 							serializedSnapshot, serializedSnapshotlen,
 							&TempDtxContextInfo);
 
 					pq_getmsgend(&input_message);
-
-					// Do not touch DTX context.
 
 					exec_mpp_dtx_protocol_command(dtxProtocolCommand, flags, loggingStr, gid, gxid, &TempDtxContextInfo);
 
