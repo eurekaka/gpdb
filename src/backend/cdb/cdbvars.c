@@ -437,13 +437,6 @@ void verifyGpIdentityIsSet(void)
 }
 
 /*
- * Keep track of a few dispatch-related  statistics:
- */
-int cdb_total_slices = 0;
-int cdb_total_plans = 0;
-int cdb_max_slices = 0;
-
-/*
  * Local macro to provide string values of numeric defines.
  */
 #define CppNumericAsString(s) CppAsString(s)

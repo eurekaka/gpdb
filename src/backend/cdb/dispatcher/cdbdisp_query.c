@@ -1287,11 +1287,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 								cancelOnError);
 	cdbdisp_queryParmsInit(ds, pQueryParms);
 
-	cdb_total_plans++;
-	cdb_total_slices += nSlices;
-	if (nSlices > cdb_max_slices)
-		cdb_max_slices = nSlices;
-
 	/*
 	 * must have somebody to dispatch to.
 	 */

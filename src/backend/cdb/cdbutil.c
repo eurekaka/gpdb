@@ -499,17 +499,6 @@ cdb_cleanup(int code __attribute__((unused)) , Datum arg __attribute__((unused))
 
 	disconnectAndDestroyAllGangs(true);
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		if (cdb_total_plans > 0)
-		{
-			elog(DEBUG1, "session dispatched %d plans %d slices (%f), largest plan %d",
-				 cdb_total_plans, cdb_total_slices,
-				 ((double)cdb_total_slices/(double)cdb_total_plans),
-				 cdb_max_slices);
-		}
-	}
-
 	if (Gp_role != GP_ROLE_UTILITY)
 	{
 		/* shutdown our listener socket */
