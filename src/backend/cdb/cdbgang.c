@@ -115,7 +115,7 @@ static void disconnectAndDestroyGang(Gang *gp);
 static void disconnectAndDestroyAllReaderGangs(bool destroyAllocated);
 
 static bool isTargetPortal(const char *p1, const char *p2);
-static void addOptions(StringInfo string, bool iswriter);
+static void addOptions(StringInfo string);
 static bool cleanupGang(Gang * gp);
 static void resetSessionForPrimaryGangLoss(void);
 static const char* gangTypeToString(GangType);
@@ -920,7 +920,7 @@ static void addOneOption(StringInfo string, struct config_generic * guc)
 /*
  * Add GUCs to option string.
  */
-static void addOptions(StringInfo string, bool iswriter)
+static void addOptions(StringInfo string)
 {
 	struct config_generic **gucs = get_guc_variables();
 	int ngucs = get_num_guc_variables();
@@ -928,7 +928,6 @@ static void addOptions(StringInfo string, bool iswriter)
 	int i;
 
 	Assert (Gp_role == GP_ROLE_DISPATCH);
-	LOG_GANG_DEBUG(LOG, "addOptions: iswriter %d", iswriter);
 
 	qdinfo = &cdb_component_dbs->entry_db_info[0];
 	appendStringInfo(string, " -c gp_qd_hostname=%s", qdinfo->hostip);
@@ -981,7 +980,7 @@ static DoConnectParms* makeConnectParms(int parmsCount, GangType type)
 	int segdbPerThread = gp_connections_per_thread == 0 ? getgpsegmentCount() : gp_connections_per_thread;
 	int i = 0;
 
-	addOptions(pOptions, type == GANGTYPE_PRIMARY_WRITER);
+	addOptions(pOptions);
 
 	for (i = 0; i < parmsCount; i++)
 	{
