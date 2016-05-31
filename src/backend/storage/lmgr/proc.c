@@ -38,6 +38,7 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/namespace.h" /* TempNamespaceOidIsValid */
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
 #include "replication/syncrep.h"
@@ -382,6 +383,11 @@ InitProcess(void)
     elog(DEBUG1,"InitProcess(): gp_session_id %d",gp_session_id);
     
     MyProc->mppIsWriter = Gp_is_writer;
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		MyProc->mppIsWriter = true;
+	}
     
 	/* Initialize fields for sync rep */
 	MyProc->waitLSN.xlogid = 0;
