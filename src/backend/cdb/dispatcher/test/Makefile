@@ -3,6 +3,7 @@ top_builddir = ../../../../..
 include $(top_builddir)/src/Makefile.global
 
 TARGETS=cdbdisp_query \
-		cdbdispatchresult
+		cdbdispatchresult \
+		cdbsrlz
 
 include $(top_builddir)/src/backend/mock.mk

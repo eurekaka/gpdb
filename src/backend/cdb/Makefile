@@ -52,7 +52,7 @@ OBJS = cdbappendonlystorage.o cdbappendonlystorageformat.o \
 	   cdbplan.o cdbpullup.o \
 	   cdbrelsize.o cdbresynchronizechangetracking.o \
 	   cdbshareddoublylinked.o cdbsharedoidsearch.o \
-	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
+	   cdbsetop.o cdbsreh.o cdbsubplan.o cdbsubselect.o \
 	   cdbtargeteddispatch.o cdbthreadlog.o \
 	   cdbtimer.o \
 	   cdbtm.o cdbtmutils.o \
