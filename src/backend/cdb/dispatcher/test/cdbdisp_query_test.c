@@ -5,12 +5,6 @@
 
 #include "../cdbdisp_query.c"
 
-void
-__wrap_clear_relsize_cache(void)
-{
-	mock();
-}
-
 int
 __wrap_RootSliceIndex(EState *estate)
 {
@@ -37,7 +31,6 @@ _init_cdbdisp_dispatchPlan(QueryDesc *queryDesc)
 	queryDesc->operation = CMD_NOTHING;
 	queryDesc->plannedstmt = (PlannedStmt *)palloc0(sizeof(PlannedStmt));
 
-	will_be_called(__wrap_clear_relsize_cache);
 	will_return(__wrap_RootSliceIndex,0);
 }
 
