@@ -231,7 +231,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 		/*
 		 * We might look for constant input relation (instead of SRI), but I'm afraid
-		 * * that wouldn't scale.
+		 * that wouldn't scale.
 		 */
 		is_SRI = IsA(stmt->planTree, Result)
 			&& stmt->planTree->lefttree == NULL;
