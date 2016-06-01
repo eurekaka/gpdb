@@ -233,33 +233,31 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		is_SRI = IsA(stmt->planTree, Result) && stmt->planTree->lefttree == NULL;
 	}
 
-	if (queryDesc->operation == CMD_INSERT ||
-		queryDesc->operation == CMD_SELECT ||
-		queryDesc->operation == CMD_UPDATE ||
-		queryDesc->operation == CMD_DELETE)
+	Assert(queryDesc->operation == CMD_INSERT ||
+		   queryDesc->operation == CMD_SELECT ||
+		   queryDesc->operation == CMD_UPDATE ||
+		   queryDesc->operation == CMD_DELETE)
+
+	MemoryContext oldContext;
+
+	oldContext = CurrentMemoryContext;
+	if (stmt->qdContext)
 	{
-
-		MemoryContext oldContext;
-
-		oldContext = CurrentMemoryContext;
-		if (stmt->qdContext)
-		{
-			oldContext = MemoryContextSwitchTo(stmt->qdContext);
-		}
-		else
-		/*
-		 * memory context of plan tree should not change
-		 */
-		{
-			MemoryContext mc = GetMemoryChunkContext(stmt->planTree);
-
-			oldContext = MemoryContextSwitchTo(mc);
-		}
-
-		stmt->planTree = (Plan *) exec_make_plan_constant(stmt, is_SRI);
-
-		MemoryContextSwitchTo(oldContext);
+		oldContext = MemoryContextSwitchTo(stmt->qdContext);
 	}
+	else
+	/*
+	 * memory context of plan tree should not change
+	 */
+	{
+		MemoryContext mc = GetMemoryChunkContext(stmt->planTree);
+
+		oldContext = MemoryContextSwitchTo(mc);
+	}
+
+	stmt->planTree = (Plan *) exec_make_plan_constant(stmt, is_SRI);
+
+	MemoryContextSwitchTo(oldContext);
 
 	/*
 	 * Cursor queries and bind/execute path queries don't run on the
