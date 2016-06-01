@@ -14,8 +14,6 @@
 
 #include "utils/relcache.h"
 
-extern void clear_relsize_cache(void);
-
 extern int64 cdbRelSize(Relation rel);
 
 

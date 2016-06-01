@@ -16,7 +16,6 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbmutate.h"
-#include "cdb/cdbrelsize.h"
 #include "cdb/cdbsrlz.h"
 #include "tcop/tcopprot.h"
 #include "utils/datum.h"
@@ -180,7 +179,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	int rootIdx;
 	int oldLocalSlice;
 	PlannedStmt *stmt;
-	bool is_SRI;
+	bool is_SRI = false;
 
 	DispatchCommandQueryParms queryParms;
 	CdbComponentDatabaseInfo *qdinfo;
@@ -223,8 +222,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * consistent value for everyone
 	 *
 	 */
-	is_SRI = false;
-
 	if (queryDesc->operation == CMD_INSERT)
 	{
 		Assert(stmt->commandType == CMD_INSERT);
@@ -233,12 +230,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * We might look for constant input relation (instead of SRI), but I'm afraid
 		 * that wouldn't scale.
 		 */
-		is_SRI = IsA(stmt->planTree, Result)
-			&& stmt->planTree->lefttree == NULL;
+		is_SRI = IsA(stmt->planTree, Result) && stmt->planTree->lefttree == NULL;
 	}
-
-	if (!is_SRI)
-		clear_relsize_cache();
 
 	if (queryDesc->operation == CMD_INSERT ||
 		queryDesc->operation == CMD_SELECT ||
