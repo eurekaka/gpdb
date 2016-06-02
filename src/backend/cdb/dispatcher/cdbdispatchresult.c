@@ -42,16 +42,14 @@ cdbdisp_snatchPGresults(CdbDispatchResult * dispatchResult,
 static void
 noTrailingNewline(StringInfo buf)
 {
-	while (buf->len > 0 &&
-		   buf->data[buf->len - 1] <= ' ' && buf->data[buf->len - 1] > '\0')
+	while (buf->len > 0 && buf->data[buf->len - 1] <= ' ' && buf->data[buf->len - 1] > '\0')
 		buf->data[--buf->len] = '\0';
 }
 
 static void
 noTrailingNewlinePQ(PQExpBuffer buf)
 {
-	while (buf->len > 0 &&
-		   buf->data[buf->len - 1] <= ' ' && buf->data[buf->len - 1] > '\0')
+	while (buf->len > 0 && buf->data[buf->len - 1] <= ' ' && buf->data[buf->len - 1] > '\0')
 		buf->data[--buf->len] = '\0';
 }
 
@@ -241,7 +239,7 @@ cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
 
 	/*
 	 * If this is the first error from this QE, save the error code
-	 * and the index of the PGresult buffer entry.  We assume the
+	 * and the index of the PGresult buffer entry. We assume the
 	 * caller has not yet added the item to the PGresult buffer.
 	 */
 	if (!dispatchResult->errcode)
@@ -610,7 +608,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult *dispatchResult,
 			if (whoami)
 			{
 				noTrailingNewline(buf);
-				appendStringInfo(buf, "  (%s)", whoami);
+				appendStringInfo(buf, " (%s)", whoami);
 			}
 
 			if (dtl)
@@ -710,7 +708,7 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults *meleeResults,
 
 /*
  * Return sum of the cmdTuples values from CdbDispatchResult
- * entries that have a successful PGresult.  If sliceIndex >= 0,
+ * entries that have a successful PGresult. If sliceIndex >= 0,
  * uses only the results belonging to the specified slice.
  */
 int64
@@ -934,17 +932,17 @@ cdbdisp_returnResults(CdbDispatchResults * primaryResults,
 bool
 cdbdisp_checkResultsErrcode(struct CdbDispatchResults *meleeResults)
 {
-    if (meleeResults == NULL)
-    {
-        return false;
-    }
+	if (meleeResults == NULL)
+	{
+		return false;
+	}
 
-    if (meleeResults->errcode)
-    {
-        return true;
-    }
+	if (meleeResults->errcode)
+	{
+		return true;
+	}
 
-    return false;
+	return false;
 }
 
 /*
@@ -955,28 +953,28 @@ cdbdisp_checkResultsErrcode(struct CdbDispatchResults *meleeResults)
  */
 CdbDispatchResults *
 cdbdisp_makeDispatchResults(int resultCapacity,
-                            int sliceCapacity,
-                            bool cancelOnError)
+							int sliceCapacity,
+							bool cancelOnError)
 {
-    CdbDispatchResults *results = palloc0(sizeof(*results));
-    int nbytes = resultCapacity * sizeof(results->resultArray[0]);
+	CdbDispatchResults *results = palloc0(sizeof(*results));
+	int nbytes = resultCapacity * sizeof(results->resultArray[0]);
 
-    results->resultArray = palloc0(nbytes);
-    results->resultCapacity = resultCapacity;
-    results->resultCount = 0;
-    results->iFirstError = -1;
-    results->errcode = 0;
-    results->cancelOnError = cancelOnError;
+	results->resultArray = palloc0(nbytes);
+	results->resultCapacity = resultCapacity;
+	results->resultCount = 0;
+	results->iFirstError = -1;
+	results->errcode = 0;
+	results->cancelOnError = cancelOnError;
 
-    results->sliceMap = NULL;
-    results->sliceCapacity = sliceCapacity;
-    if (sliceCapacity > 0)
-    {
-        nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
-        results->sliceMap = palloc0(nbytes);
-    }
-
-    return results;
+	results->sliceMap = NULL;
+	results->sliceCapacity = sliceCapacity;
+	if (sliceCapacity > 0)
+	{
+		nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
+		results->sliceMap = palloc0(nbytes);
+	}
+	
+	return results;
 }
 
 /*
