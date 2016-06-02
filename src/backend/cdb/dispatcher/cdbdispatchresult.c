@@ -2,7 +2,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbdispatchresult.c
- *	  Functions for handling dispatch results 
+ *	  Functions for handling dispatch results
  *
  *
  * Copyright (c) 2005-2008, Greenplum inc
@@ -26,14 +26,14 @@
 #include "cdb/cdbdispatchresult.h"
 #include "commands/tablecmds.h"
 
-/* 
+/*
  * This mutex serializes writes by dispatcher threads to the
  * iFirstError and errcode fields of CdbDispatchResults objects.
  */
 static pthread_mutex_t setErrcodeMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int
-cdbdisp_snatchPGresults(CdbDispatchResult * dispatchResult,
+cdbdisp_snatchPGresults(CdbDispatchResult *dispatchResult,
 						struct pg_result **pgresultptrs, int maxresults);
 
 /*
@@ -108,7 +108,7 @@ cdbdisp_makeResult(struct CdbDispatchResults *meleeResults,
 		destroyPQExpBuffer(dispatchResult->resultbuf);
 		dispatchResult->resultbuf = NULL;
 		/*
-		 * caller is responsible for cleanup -- can't elog(ERROR, ...) from here. 
+		 * caller is responsible for cleanup -- can't elog(ERROR, ...) from here.
 		 */
 		return NULL;
 	}
@@ -146,7 +146,7 @@ cdbdisp_makeResult(struct CdbDispatchResults *meleeResults,
  * Destroy a CdbDispatchResult object.
  */
 void
-cdbdisp_termResult(CdbDispatchResult * dispatchResult)
+cdbdisp_termResult(CdbDispatchResult *dispatchResult)
 {
 	PQExpBuffer trash;
 
@@ -173,7 +173,7 @@ cdbdisp_termResult(CdbDispatchResult * dispatchResult)
  * Reset a CdbDispatchResult object for possible reuse.
  */
 void
-cdbdisp_resetResult(CdbDispatchResult * dispatchResult)
+cdbdisp_resetResult(CdbDispatchResult *dispatchResult)
 {
 	PQExpBuffer buf = dispatchResult->resultbuf;
 	PGresult **begp = (PGresult **) buf->data;
@@ -205,7 +205,7 @@ cdbdisp_resetResult(CdbDispatchResult * dispatchResult)
 	dispatchResult->wasCanceled = false;
 
 	/*
-	 * Empty (but don't free) the error message buffer and result buffer. 
+	 * Empty (but don't free) the error message buffer and result buffer.
 	 */
 	resetPQExpBuffer(dispatchResult->resultbuf);
 	resetPQExpBuffer(dispatchResult->error_message);
@@ -264,7 +264,6 @@ cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
 	{
 		/* nop */
 	}
-
 	else if (meleeResults->errcode == 0 ||
 			 (meleeResults->errcode == ERRCODE_GP_INTERCONNECTION_ERROR &&
 			  errcode != ERRCODE_GP_INTERCONNECTION_ERROR))
@@ -286,7 +285,7 @@ cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
  * returns true if segdbDesc had err info
  */
 bool
-cdbdisp_mergeConnectionErrors(CdbDispatchResult * dispatchResult,
+cdbdisp_mergeConnectionErrors(CdbDispatchResult *dispatchResult,
 							  struct SegmentDatabaseDescriptor *segdbDesc)
 {
 	if (!segdbDesc)
@@ -306,7 +305,7 @@ cdbdisp_mergeConnectionErrors(CdbDispatchResult * dispatchResult,
 						  segdbDesc->error_message.data);
 
 	/*
-	 * Reset connection object's error info. 
+	 * Reset connection object's error info.
 	 */
 	segdbDesc->errcode = 0;
 	segdbDesc->error_message.len = 0;
@@ -324,7 +323,7 @@ cdbdisp_mergeConnectionErrors(CdbDispatchResult * dispatchResult,
  * palloc/pfree or elog/ereport because they are not thread safe.
  */
 void
-cdbdisp_appendMessage(CdbDispatchResult * dispatchResult,
+cdbdisp_appendMessage(CdbDispatchResult *dispatchResult,
 					  int elevel, int errcode, const char *fmt, ...)
 {
 	va_list	args;
@@ -366,7 +365,7 @@ cdbdisp_appendMessage(CdbDispatchResult * dispatchResult,
 
 	/*
 	 * Display the message on stderr for debugging, if requested.
-	 * * This helps to clarify the actual timing of threaded events.
+	 * This helps to clarify the actual timing of threaded events.
 	 */
 	if (elevel >= log_min_messages)
 	{
@@ -386,7 +385,7 @@ cdbdisp_appendMessage(CdbDispatchResult * dispatchResult,
  * NB: Caller must not PQclear() the PGresult object.
  */
 void
-cdbdisp_appendResult(CdbDispatchResult * dispatchResult, struct pg_result *res)
+cdbdisp_appendResult(CdbDispatchResult *dispatchResult, struct pg_result *res)
 {
 	Assert(dispatchResult && res);
 
@@ -399,13 +398,13 @@ cdbdisp_appendResult(CdbDispatchResult * dispatchResult, struct pg_result *res)
 	appendBinaryPQExpBuffer(dispatchResult->resultbuf, (char *) &res, sizeof(res));
 }
 
-/* 
+/*
  * Return the i'th PGresult object ptr (if i >= 0), or
  * the n+i'th one (if i < 0), or NULL (if i out of bounds).
  * NB: Caller must not PQclear() the PGresult object.
  */
 struct pg_result *
-cdbdisp_getPGresult(CdbDispatchResult * dispatchResult, int i)
+cdbdisp_getPGresult(CdbDispatchResult *dispatchResult, int i)
 {
 	if (dispatchResult)
 	{
@@ -427,7 +426,7 @@ cdbdisp_getPGresult(CdbDispatchResult * dispatchResult, int i)
  * Return the number of PGresult objects in the result buffer.
  */
 int
-cdbdisp_numPGresult(CdbDispatchResult * dispatchResult)
+cdbdisp_numPGresult(CdbDispatchResult *dispatchResult)
 {
 	return dispatchResult ? dispatchResult->resultbuf->len / sizeof(PGresult *) : 0;
 }
@@ -437,7 +436,7 @@ cdbdisp_numPGresult(CdbDispatchResult * dispatchResult)
  * Call only from main thread, during or after cdbdisp_checkDispatchResults.
  */
 void
-cdbdisp_debugDispatchResult(CdbDispatchResult * dispatchResult,
+cdbdisp_debugDispatchResult(CdbDispatchResult *dispatchResult,
 							int elevel_error, int elevel_success)
 {
 	char esqlstate[8];
@@ -458,7 +457,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult * dispatchResult,
 	 */
 	nres = cdbdisp_numPGresult(dispatchResult);
 	for (ires = 0; ires < nres; ++ires)
-	{							/* for each PGresult */
+	{
 		PGresult *pgresult = cdbdisp_getPGresult(dispatchResult, ires);
 		ExecStatusType resultStatus = PQresultStatus(pgresult);
 		char *whoami = PQresultErrorField(pgresult, PG_DIAG_GP_PROCESS_TAG);
@@ -682,7 +681,7 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults *meleeResults,
 		   dispatchResult->errcode != 0);
 
 	/*
-	 * Format one QE's result. 
+	 * Format one QE's result.
 	 */
 	cdbdisp_dumpDispatchResult(dispatchResult, verbose, buffer);
 
@@ -712,7 +711,7 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults *meleeResults,
  * uses only the results belonging to the specified slice.
  */
 int64
-cdbdisp_sumCmdTuples(CdbDispatchResults * results, int sliceIndex)
+cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, sliceIndex);
@@ -741,7 +740,7 @@ cdbdisp_sumCmdTuples(CdbDispatchResults * results, int sliceIndex)
  * all QE's and notify the client.
  */
 void
-cdbdisp_sumRejectedRows(CdbDispatchResults * results)
+cdbdisp_sumRejectedRows(CdbDispatchResults *results)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, -1);
@@ -800,7 +799,7 @@ cdbdisp_sumAoPartTupCount(PartitionNode *parts, CdbDispatchResults *results)
  * Find the max of the lastOid values returned from the QEs
  */
 Oid
-cdbdisp_maxLastOid(CdbDispatchResults * results, int sliceIndex)
+cdbdisp_maxLastOid(CdbDispatchResults *results, int sliceIndex)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResult *resultEnd = cdbdisp_resultEnd(results, sliceIndex);
@@ -827,7 +826,7 @@ cdbdisp_maxLastOid(CdbDispatchResults * results, int sliceIndex)
  * Return ptr to first resultArray entry for a given sliceIndex.
  */
 CdbDispatchResult *
-cdbdisp_resultBegin(CdbDispatchResults * results, int sliceIndex)
+cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex)
 {
 	CdbDispatchResults_SliceInfo *si;
 
@@ -851,7 +850,7 @@ cdbdisp_resultBegin(CdbDispatchResults * results, int sliceIndex)
  * Return ptr to last+1 resultArray entry for a given sliceIndex.
  */
 CdbDispatchResult *
-cdbdisp_resultEnd(CdbDispatchResults * results, int sliceIndex)
+cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex)
 {
 	CdbDispatchResults_SliceInfo *si;
 
@@ -867,7 +866,7 @@ cdbdisp_resultEnd(CdbDispatchResults * results, int sliceIndex)
 }
 
 struct pg_result **
-cdbdisp_returnResults(CdbDispatchResults * primaryResults,
+cdbdisp_returnResults(CdbDispatchResults *primaryResults,
 					  StringInfo errmsgbuf, int *numresults)
 {
 	CdbDispatchResult *dispatchResult;
@@ -906,12 +905,12 @@ cdbdisp_returnResults(CdbDispatchResults * primaryResults,
 			dispatchResult = &primaryResults->resultArray[i];
 
 			/*
-			 * Append error messages to caller's buffer. 
+			 * Append error messages to caller's buffer.
 			 */
 			cdbdisp_dumpDispatchResult(dispatchResult, false, errmsgbuf);
 
 			/*
-			 * Take ownership of this QE's PGresult object(s). 
+			 * Take ownership of this QE's PGresult object(s).
 			 */
 			nresults += cdbdisp_snatchPGresults(dispatchResult,
 												resultSets + nresults,
@@ -984,7 +983,7 @@ cdbdisp_makeDispatchResults(int resultCapacity,
  * PGresult ptrs placed in the array.
  */
 static int
-cdbdisp_snatchPGresults(CdbDispatchResult * dispatchResult,
+cdbdisp_snatchPGresults(CdbDispatchResult *dispatchResult,
 						struct pg_result **pgresultptrs, int maxresults)
 {
 	PQExpBuffer buf = dispatchResult->resultbuf;

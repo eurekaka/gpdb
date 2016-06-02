@@ -38,9 +38,9 @@ extern bool Test_print_direct_dispatch_info;
  */
 typedef struct
 {
-	int			sliceIndex;
-	int			children;
-	Slice	   *slice;
+	int	sliceIndex;
+	int	children;
+	Slice *slice;
 } sliceVec;
 
 /*
@@ -108,13 +108,13 @@ fillSliceVector(SliceTable *sliceTable,
 
 static char *
 PQbuildGpQueryString(MemoryContext cxt,
-					 DispatchCommandParms * pParms,
-					 DispatchCommandQueryParms * pQueryParms,
+					 DispatchCommandParms *pParms,
+					 DispatchCommandQueryParms *pQueryParms,
 					 int *finalLen);
 
 static void
 cdbdisp_queryParmsInit(struct CdbDispatcherState *ds,
-					   DispatchCommandQueryParms * pQueryParms);
+					   DispatchCommandQueryParms *pQueryParms);
 
 static void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
@@ -124,7 +124,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
- * within a complete parallel plan.  (A plan tree will correspond either
+ * within a complete parallel plan. (A plan tree will correspond either
  * to an initPlan or to the main plan.)
  *
  * If cancelOnError is true, then any dispatching error, a cancellation
@@ -132,7 +132,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * may cause the unfinished portion of the plan to be abandoned or canceled;
  * and in the event this occurs before all gangs have been dispatched, this
  * function does not return, but waits for all QEs to stop and exits to
- * the caller's error catcher via ereport(ERROR,...).  Otherwise this
+ * the caller's error catcher via ereport(ERROR,...). Otherwise this
  * function returns normally and errors are not reported until later.
  *
  * If cancelOnError is false, the plan is to be dispatched as fully as
@@ -140,11 +140,11 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * requests, errors or connection failures from other QEs, etc.
  *
  * The CdbDispatchResults objects allocated for the plan are returned
- * in *pPrimaryResults.  The caller, after calling
+ * in *pPrimaryResults. The caller, after calling
  * CdbCheckDispatchResult(), can examine the CdbDispatchResults
  * objects, can keep them as long as needed, and ultimately must free
  * them with cdbdisp_destroyDispatcherState() prior to deallocation of
- * the caller's memory context.  Callers should use PG_TRY/PG_CATCH to
+ * the caller's memory context. Callers should use PG_TRY/PG_CATCH to
  * ensure proper cleanup.
  *
  * To wait for completion, check for errors, and clean up, it is
@@ -204,7 +204,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			&& rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
 	/*
-	 * Keep old value so we can restore it.  We use this field as a parameter.
+	 * Keep old value so we can restore it. We use this field as a parameter.
 	 */
 	oldLocalSlice = sliceTbl->localSlice;
 
@@ -220,7 +220,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * Also, if this is a single-row INSERT statement, let's evaluate
 	 * nextval() and currval() now, so that we get the QD's values, and a
 	 * consistent value for everyone
-	 *
 	 */
 	if (queryDesc->operation == CMD_INSERT)
 	{
@@ -342,7 +341,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			bool		typbyval;
 
 			/*
-			 * Recompute pli each time in case parambuf.data is repalloc'ed 
+			 * Recompute pli each time in case parambuf.data is repalloc'ed
 			 */
 			pli = (ParamListInfoData *) (parambuf.data + plioff);
 			pxd = &pli->params[iparam];
@@ -353,7 +352,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			get_typlenbyval(pxd->ptype, &typlen, &typbyval);
 			if (!typbyval)
 			{
-				char	   *s = DatumGetPointer(pxd->value);
+				char *s = DatumGetPointer(pxd->value);
 
 				if (pxd->isnull || !PointerIsValid(s))
 				{
@@ -486,7 +485,7 @@ CdbSetGucOnAllGangs(const char *strCommand,
  * Send the strCommand SQL statement to all segdbs in the cluster
  * cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
- * on other qExecs. Normally this would be true.  The commands are sent over the libpq
+ * on other qExecs. Normally this would be true. The commands are sent over the libpq
  * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable gp_connections_per_thread.
@@ -511,7 +510,7 @@ cdbdisp_dispatchCommand(const char *strCommand,
 						int serializedQuerytreelen,
 						bool cancelOnError,
 						bool needTwoPhase,
-						bool withSnapshot, CdbDispatcherState * ds)
+						bool withSnapshot, CdbDispatcherState *ds)
 {
 	DispatchCommandQueryParms queryParms;
 	Gang *primaryGang;
@@ -612,7 +611,7 @@ CdbDoCommand(const char *strCommand, bool cancelOnError, bool needTwoPhase)
 
 /*
  * Dispatch a command - already parsed and in the form of a Node tree
- * - to all primary segdbs.  Does not wait for completion. Does not
+ * - to all primary segdbs. Does not wait for completion. Does not
  * start a global transaction.
  *
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
@@ -654,12 +653,12 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	q->querySource = QSRC_ORIGINAL;
 
 	/*
-	 * We must set q->canSetTag = true.  False would be used to hide a command
+	 * We must set q->canSetTag = true. False would be used to hide a command
 	 * introduced by rule expansion which is not allowed to return its
 	 * completion status in the command tag (PQcmdStatus/PQcmdTuples). For
 	 * example, if the original unexpanded command was SELECT, the status
 	 * should come back as "SELECT n" and should not reflect other commands
-	 * inserted by rewrite rules.  True means we want the status.
+	 * inserted by rewrite rules. True means we want the status.
 	 */
 	q->canSetTag = true;
 
@@ -696,7 +695,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 {
 	volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
 
-	PGresult  **resultSets = NULL;
+	PGresult **resultSets = NULL;
 
 	/*
 	 * never want to start a global transaction for these
@@ -710,7 +709,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 	PG_TRY();
 	{
 		/*
-		 * Launch the command.	Don't cancel on error. 
+		 * Launch the command.	Don't cancel on error.
 		 */
 		cdbdisp_dispatchCommand(strCommand, NULL, 0,
 								false, /* cancelOnError */
@@ -718,7 +717,7 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 								(struct CdbDispatcherState *) &ds);
 
 		/*
-		 * Wait for all QEs to finish.	Don't cancel. 
+		 * Wait for all QEs to finish.	Don't cancel.
 		 */
 		CdbCheckDispatchResult((struct CdbDispatcherState *) &ds, DISPATCH_WAIT_NONE);
 	}
@@ -743,8 +742,8 @@ cdbdisp_dispatchRMCommand(const char *strCommand,
 
 /*
  * Dispatch a command - already parsed and in the form of a Node tree
- * - to all primary segdbs, and wait for completion.  Starts a global
- * transaction first, if not already started.  If not all QEs in the
+ * - to all primary segdbs, and wait for completion. Starts a global
+ * transaction first, if not already started. If not all QEs in the
  * given gang(s) executed the command successfully, throws an error
  * and does not return.
  */
@@ -935,12 +934,12 @@ count_bits(char *bits, int nbyte)
 
 /*
  * We use a bitmask to count the dep. childrens.
- * Because of input sharing, the slices now are DAG.  We cannot simply go down the
+ * Because of input sharing, the slices now are DAG. We cannot simply go down the
  * tree and add up number of children, which will return too big number.
  */
 static int
-markbit_dep_children(SliceTable * sliceTable, int sliceIdx,
-					 sliceVec * sliceVec, int bitmasklen, char *bits)
+markbit_dep_children(SliceTable *sliceTable, int sliceIdx,
+					 sliceVec *sliceVec, int bitmasklen, char *bits)
 {
 	ListCell *sublist;
 	Slice *slice = (Slice *) list_nth(sliceTable->slices, sliceIdx);
@@ -968,8 +967,8 @@ markbit_dep_children(SliceTable * sliceTable, int sliceIdx,
  * Count how many dependent childrens and fill in the sliceVector of dependent childrens.
  */
 static int
-count_dependent_children(SliceTable * sliceTable, int sliceIndex,
-						 sliceVec * sliceVector, int len)
+count_dependent_children(SliceTable *sliceTable, int sliceIndex,
+						 sliceVec *sliceVector, int len)
 {
 	int	ret = 0;
 	int	bitmasklen = (len + 7) >> 3;
@@ -1004,8 +1003,8 @@ fillSliceVector(SliceTable *sliceTbl, int rootIdx,
  * Build a query string to be dispatched to QE.
  */
 static char *
-PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
-					 DispatchCommandQueryParms * pQueryParms, int *finalLen)
+PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms *pParms,
+					 DispatchCommandQueryParms *pQueryParms, int *finalLen)
 {
 	const char *command = pQueryParms->strCommand;
 	int command_len = strlen(pQueryParms->strCommand) + 1;
@@ -1042,8 +1041,8 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	char one = 1;
 	char zero = 0;
 
-	total_query_len = 1 /* 'M' */  +
-		sizeof(len) /* message length */  +
+	total_query_len = 1 /* 'M' */ +
+		sizeof(len) /* message length */ +
 		sizeof(gp_command_count) +
 		sizeof(sessionUserId) + 1 /* sessionUserIsSuper */	+
 		sizeof(outerUserId) + 1 /* outerUserIsSuper */	+
@@ -1051,7 +1050,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 		sizeof(localSlice) +
 		sizeof(rootIdx) +
 		sizeof(primary_gang_id) +
-		sizeof(n32) * 2 /* currentStatementStartTimestamp */  +
+		sizeof(n32) * 2 /* currentStatementStartTimestamp */ +
 		sizeof(command_len) +
 		sizeof(querytree_len) +
 		sizeof(plantree_len) +
@@ -1114,7 +1113,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 	pos += sizeof(primary_gang_id);
 
 	/*
-	 * High order half first, since we're doing MSB-first 
+	 * High order half first, since we're doing MSB-first
 	 */
 	n32 = (uint32) (currentStatementStartTimestamp >> 32);
 	n32 = htonl(n32);
@@ -1224,7 +1223,7 @@ PQbuildGpQueryString(MemoryContext cxt, DispatchCommandParms * pParms,
 }
 
 /*
- * This code was refactored out of cdbdisp_dispatchPlan.  It's
+ * This code was refactored out of cdbdisp_dispatchPlan. It's
  * used both for dispatching plans when we are using normal gangs,
  * and for dispatching all statements from Query Dispatch Agents
  * when we are using dispatch agents.
@@ -1235,12 +1234,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  struct SliceTable *sliceTbl,
 				  struct CdbDispatcherState *ds)
 {
-	int			oldLocalSlice = 0;
-	sliceVec   *sliceVector = NULL;
-	int			nSlices = 1;
-	int			sliceLim = 1;
-	int			iSlice;
-	int			rootIdx = pQueryParms->rootIdx;
+	int oldLocalSlice = 0;
+	sliceVec *sliceVector = NULL;
+	int nSlices = 1;
+	int sliceLim = 1;
+	int iSlice;
+	int rootIdx = pQueryParms->rootIdx;
 
 	if (log_dispatch_stats)
 		ResetUsage();
@@ -1254,7 +1253,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				rootIdx <= sliceTbl->nMotions + sliceTbl->nInitPlans));
 
 		/*
-		 * Keep old value so we can restore it.  We use this field as a parameter.
+		 * Keep old value so we can restore it. We use this field as a parameter.
 		 */
 		oldLocalSlice = sliceTbl->localSlice;
 
@@ -1302,9 +1301,9 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
 		CdbDispatchDirectDesc direct;
-		Gang	   *primaryGang = NULL;
-		Slice	   *slice = NULL;
-		int			si = -1;
+		Gang *primaryGang = NULL;
+		Slice *slice = NULL;
+		int si = -1;
 
 		if (sliceVector)
 		{
@@ -1323,7 +1322,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (slice && slice->gangType == GANGTYPE_UNALLOCATED)
 			{
 				/*
-				 * Most slices are dispatched, however, in many  cases the
+				 * Most slices are dispatched, however, in many cases the
 				 * root runs only on the QD and is not dispatched to the QEs.
 				 */
 				continue;
@@ -1356,7 +1355,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				direct.count = list_length(slice->directDispatch.contentIds);
 
 				/*
-				 * only support single content right now.  If this changes then we need to change from
+				 * only support single content right now. If this changes then we need to change from
 				 * a list to another structure to avoid n^2 cases
 				 */
 				Assert(direct.count == 1);
@@ -1457,12 +1456,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		cdbdisp_finishCommand(ds, NULL, NULL);
 
 		/*
-		 * Wasn't an error, must have been an interrupt. 
+		 * Wasn't an error, must have been an interrupt.
 		 */
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * Strange!  Not an interrupt either.
+		 * Strange! Not an interrupt either.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg_internal("Unable to dispatch plan.")));
@@ -1470,7 +1469,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 
 	if (DEBUG1 >= log_min_messages)
 	{
-		char		msec_str[32];
+		char msec_str[32];
 
 		switch (check_log_duration(msec_str, false))
 		{
@@ -1488,7 +1487,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 /*
  * Dispatch SET command to all gangs.
  *
- * Can not dispatch SET commands to busy reader gangs (allocated by cursors) directly because another command is already in progress.
+ * Can not dispatch SET commands to busy reader gangs (allocated by cursors) directly because another
+ * command is already in progress.
  * Cursors only allocate reader gangs, so primary writer and idle reader gangs can be dispatched to.
  */
 static void

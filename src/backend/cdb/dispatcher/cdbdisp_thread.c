@@ -50,19 +50,19 @@ static volatile int32 RunningThreadCount = 0;
 static int	getMaxThreadsPerGang(void);
 
 static bool
-shouldStillDispatchCommand(DispatchCommandParms * pParms,
-						   CdbDispatchResult * dispatchResult);
+shouldStillDispatchCommand(DispatchCommandParms *pParms,
+						   CdbDispatchResult *dispatchResult);
 
 static void
-CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor * segdbDesc,
-									  CdbDispatchResult * dispatchResult);
+CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc,
+									  CdbDispatchResult *dispatchResult);
 
 static void
-dispatchCommand(CdbDispatchResult * dispatchResult,
+dispatchCommand(CdbDispatchResult *dispatchResult,
 				const char *query_text, int query_text_len);
 
 /* returns true if command complete */
-static bool processResults(CdbDispatchResult * dispatchResult);
+static bool processResults(CdbDispatchResult *dispatchResult);
 
 static char *
 dupQueryTextAndSetSliceId(MemoryContext cxt,
@@ -70,19 +70,19 @@ dupQueryTextAndSetSliceId(MemoryContext cxt,
 						  int len, int sliceId);
 
 static DispatchWaitMode
-cdbdisp_signalQE(SegmentDatabaseDescriptor * segdbDesc,
+cdbdisp_signalQE(SegmentDatabaseDescriptor *segdbDesc,
 				 DispatchWaitMode waitMode);
 
 static void *thread_DispatchCommand(void *arg);
-static void thread_DispatchOut(DispatchCommandParms * pParms);
-static void thread_DispatchWait(DispatchCommandParms * pParms);
-static void thread_DispatchWaitSingle(DispatchCommandParms * pParms);
+static void thread_DispatchOut(DispatchCommandParms *pParms);
+static void thread_DispatchWait(DispatchCommandParms *pParms);
+static void thread_DispatchWaitSingle(DispatchCommandParms *pParms);
 
 static void
-handlePollError(DispatchCommandParms * pParms, int db_count, int sock_errno);
+handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno);
 
 static void
-handlePollTimeout(DispatchCommandParms * pParms,
+handlePollTimeout(DispatchCommandParms *pParms,
 				  int db_count, int *timeoutCounter, bool useSampling);
 
 static void
@@ -92,7 +92,7 @@ void
 cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
 								struct Gang *gp,
 								int sliceIndex,
-								CdbDispatchDirectDesc * disp_direct)
+								CdbDispatchDirectDesc *disp_direct)
 {
 	struct CdbDispatchResults *dispatchResults = ds->primaryResults;
 	SegmentDatabaseDescriptor *segdbDesc;
@@ -156,7 +156,7 @@ cdbdisp_dispatchToGang_internal(struct CdbDispatcherState *ds,
 		}
 
 		/*
-		 * Initialize the QE's CdbDispatchResult object. 
+		 * Initialize the QE's CdbDispatchResult object.
 		 */
 		qeResult = cdbdisp_makeResult(dispatchResults, segdbDesc, sliceIndex);
 
@@ -519,7 +519,7 @@ cdbdisp_makeDispatchThreads(int maxSlices)
 }
 
 static void
-thread_DispatchOut(DispatchCommandParms * pParms)
+thread_DispatchOut(DispatchCommandParms *pParms)
 {
 	CdbDispatchResult *dispatchResult;
 	int	i,
@@ -554,7 +554,7 @@ thread_DispatchOut(DispatchCommandParms * pParms)
 		if (!shouldStillDispatchCommand(pParms, dispatchResult))
 		{
 			/*
-			 * Don't dispatch if cancellation pending or no connection. 
+			 * Don't dispatch if cancellation pending or no connection.
 			 */
 			dispatchResult->stillRunning = false;
 			if (PQisBusy(dispatchResult->segdbDesc->conn))
@@ -608,8 +608,8 @@ thread_DispatchOut(DispatchCommandParms * pParms)
 			/*
 			 * In 2000, Tom Lane said:
 			 * "I believe that the nonblocking-mode code is pretty buggy, and don't
-			 *	recommend using it unless you really need it and want to help debug
-			 *	it.."
+			 * recommend using it unless you really need it and want to help debug
+			 * it.."
 			 *
 			 * Reading through the code, I'm not convinced the situation has
 			 * improved in 2007... I still see some very questionable things
@@ -672,7 +672,7 @@ thread_DispatchOut(DispatchCommandParms * pParms)
 			 */
 			flushResult = PQflush(dispatchResult->segdbDesc->conn);
 			/*
-			 * First time, go through the loop without waiting if we can't 
+			 * First time, go through the loop without waiting if we can't
 			 * flush, in case we are using multiple network adapters, and
 			 * other connections might be able to flush
 			 */
@@ -704,7 +704,7 @@ thread_DispatchOut(DispatchCommandParms * pParms)
 }
 
 static void
-thread_DispatchWait(DispatchCommandParms * pParms)
+thread_DispatchWait(DispatchCommandParms *pParms)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
@@ -821,7 +821,7 @@ thread_DispatchWait(DispatchCommandParms * pParms)
 			segdbDesc = dispatchResult->segdbDesc;
 
 			/*
-			 * Skip if already finished or didn't dispatch. 
+			 * Skip if already finished or didn't dispatch.
 			 */
 			if (!dispatchResult->stillRunning)
 				continue;
@@ -894,7 +894,7 @@ thread_DispatchWait(DispatchCommandParms * pParms)
 }
 
 static void
-thread_DispatchWaitSingle(DispatchCommandParms * pParms)
+thread_DispatchWaitSingle(DispatchCommandParms *pParms)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
@@ -1134,7 +1134,7 @@ thread_DispatchCommand(void *arg)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 static void
-dispatchCommand(CdbDispatchResult * dispatchResult,
+dispatchCommand(CdbDispatchResult *dispatchResult,
 				const char *query_text, int query_text_len)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
@@ -1194,7 +1194,7 @@ dispatchCommand(CdbDispatchResult * dispatchResult,
  *		 The cleanup of the connections will be performed by handlePollTimeout().
  */
 static void
-handlePollError(DispatchCommandParms * pParms, int db_count, int sock_errno)
+handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno)
 {
 	int	i;
 	int	forceTimeoutCount;
@@ -1211,7 +1211,7 @@ handlePollError(DispatchCommandParms * pParms, int db_count, int sock_errno)
 	 * Based on the select man page, we could get here with
 	 * errno == EBADF (bad descriptor), EINVAL (highest descriptor negative or negative timeout)
 	 * or ENOMEM (out of memory).
-	 * This is most likely a programming error or a bad system failure, but we'll try to 
+	 * This is most likely a programming error or a bad system failure, but we'll try to
 	 * clean up a bit anyhow.
 	 *
 	 * We *can* get here as a result of some hardware issues. the timeout code
@@ -1224,13 +1224,13 @@ handlePollError(DispatchCommandParms * pParms, int db_count, int sock_errno)
 		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
 
 		/*
-		 * Skip if already finished or didn't dispatch. 
+		 * Skip if already finished or didn't dispatch.
 		 */
 		if (!dispatchResult->stillRunning)
 			continue;
 
 		/*
-		 * We're done with this QE, sadly. 
+		 * We're done with this QE, sadly.
 		 */
 		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
 		{
@@ -1277,7 +1277,7 @@ handlePollError(DispatchCommandParms * pParms, int db_count, int sock_errno)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 static void
-handlePollTimeout(DispatchCommandParms * pParms,
+handlePollTimeout(DispatchCommandParms *pParms,
 				  int db_count, int *timeoutCounter, bool useSampling)
 {
 	CdbDispatchResult *dispatchResult;
@@ -1358,7 +1358,7 @@ handlePollTimeout(DispatchCommandParms * pParms,
 						  dispatchResult->stillRunning);
 
 			/*
-			 * Skip if already finished or didn't dispatch. 
+			 * Skip if already finished or didn't dispatch.
 			 */
 			if (!dispatchResult->stillRunning)
 				continue;
@@ -1438,16 +1438,16 @@ getMaxThreadsPerGang(void)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 static bool
-shouldStillDispatchCommand(DispatchCommandParms * pParms,
-						   CdbDispatchResult * dispatchResult)
+shouldStillDispatchCommand(DispatchCommandParms *pParms,
+						   CdbDispatchResult *dispatchResult)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	CdbDispatchResults *gangResults = dispatchResult->meleeResults;
 
 	/*
 	 * Don't dispatch to a QE that is not connected. Note, that PQstatus() correctly
-	 * * handles the case where segdbDesc->conn is NULL, and we *definitely* want to
-	 * * produce an error for that case.
+	 * handles the case where segdbDesc->conn is NULL, and we *definitely* want to
+	 * produce an error for that case.
 	 */
 	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 	{
@@ -1470,7 +1470,7 @@ shouldStillDispatchCommand(DispatchCommandParms * pParms,
 		}
 
 		/*
-		 * Free the PGconn object at once whenever we notice it's gone bad. 
+		 * Free the PGconn object at once whenever we notice it's gone bad.
 		 */
 		PQfinish(segdbDesc->conn);
 		segdbDesc->conn = NULL;
@@ -1518,7 +1518,7 @@ shouldStillDispatchCommand(DispatchCommandParms * pParms,
 }
 
 static bool
-processResults(CdbDispatchResult * dispatchResult)
+processResults(CdbDispatchResult *dispatchResult)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	char *msg;
@@ -1541,7 +1541,7 @@ processResults(CdbDispatchResult * dispatchResult)
 	rc = PQconsumeInput(segdbDesc->conn);
 
 	/*
-	 * If PQconsumeInput fails, we're hosed. 
+	 * If PQconsumeInput fails, we're hosed.
 	 */
 	if (rc == 0)
 	{							/* handle PQconsumeInput error */
@@ -1568,7 +1568,7 @@ processResults(CdbDispatchResult * dispatchResult)
 		 * PQisBusy() does some error handling, which can
 		 * cause the connection to die -- we can't just continue on as
 		 * if the connection is happy without checking first.
-		 * 
+		 *
 		 * For example, cdbdisp_numPGresult() will return a completely
 		 * bogus value!
 		 */
@@ -1709,7 +1709,7 @@ connection_error:
 						  segdbDesc->whoami, msg ? msg : "unknown error");
 
 	/*
-	 * Can't recover, so drop the connection. 
+	 * Can't recover, so drop the connection.
 	 */
 	PQfinish(segdbDesc->conn);
 	segdbDesc->conn = NULL;
@@ -1719,8 +1719,8 @@ connection_error:
 }
 
 static void
-CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor * segdbDesc,
-									  CdbDispatchResult * dispatchResult)
+CollectQEWriterTransactionInformation(SegmentDatabaseDescriptor *segdbDesc,
+									  CdbDispatchResult *dispatchResult)
 {
 	PGconn *conn = segdbDesc->conn;
 
@@ -1748,7 +1748,7 @@ dupQueryTextAndSetSliceId(MemoryContext cxt, char *queryText,
 						  int len, int sliceId)
 {
 	/*
-	 * DTX command and RM command don't need slice id 
+	 * DTX command and RM command don't need slice id
 	 */
 	if (sliceId < 0)
 		return NULL;
@@ -1772,7 +1772,7 @@ dupQueryTextAndSetSliceId(MemoryContext cxt, char *queryText,
  * sent a signal (not necessarily received by the target process).
  */
 static DispatchWaitMode
-cdbdisp_signalQE(SegmentDatabaseDescriptor * segdbDesc,
+cdbdisp_signalQE(SegmentDatabaseDescriptor *segdbDesc,
 				 DispatchWaitMode waitMode)
 {
 	char errbuf[256];

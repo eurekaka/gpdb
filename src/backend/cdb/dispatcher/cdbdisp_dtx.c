@@ -55,7 +55,7 @@ static void cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
 
 static char *
 PQbuildGpDtxProtocolCommand(MemoryContext cxt,
-							DispatchCommandDtxProtocolParms * pDtxProtocolParms,
+							DispatchCommandDtxProtocolParms *pDtxProtocolParms,
 							int *finalLen);
 
 /*
@@ -79,12 +79,12 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 								   StringInfo errmsgbuf,
 								   int *numresults,
 								   bool *badGangs,
-								   CdbDispatchDirectDesc * direct,
+								   CdbDispatchDirectDesc *direct,
 								   char *argument, int argumentLength)
 {
 	CdbDispatcherState ds = {NULL, NULL, NULL};
 
-	PGresult  **resultSets = NULL;
+	PGresult **resultSets = NULL;
 
 	DispatchCommandDtxProtocolParms dtxProtocolParms;
 	Gang *primaryGang;
@@ -134,7 +134,7 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	cdbdisp_dispatchToGang(&ds, primaryGang, -1, direct);
 
 	/*
-	 * Wait for all QEs to finish.	Don't cancel. 
+	 * Wait for all QEs to finish.	Don't cancel.
 	 */
 	CdbCheckDispatchResult(&ds, DISPATCH_WAIT_NONE);
 
@@ -171,11 +171,11 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 	 * in the abort transaction code. This code tears down enough stuff such
 	 * that you can't call GetTransactionSnapshot() within that code. So we
 	 * need to use the LatestSnapshot since we can't re-gen a new one.
-	 * 
+	 *
 	 * It is also very possible that for a single user statement which may
 	 * only generate a single snapshot that we will dispatch multiple statements
 	 * to our qExecs. Something like:
-	 * 
+	 *
 	 *    					  QD			  QEs
 	 *    					  |				  |
 	 * User SQL Statement --->|		BEGIN	  |
@@ -187,11 +187,11 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 	 *    					  |    COMMIT	  |
 	 *    					  |-------------->|
 	 *    					  |				  |
-	 * 
+	 *
 	 * This may seem like a problem because all four of those will dispatch
 	 * the same snapshot with the same curcid. But... this is OK because
 	 * BEGIN, PREPARE, and COMMIT don't need Snapshots on the QEs.
-	 * 
+	 *
 	 * NOTE: This will be a problem if we ever need to dispatch more than one
 	 * statement to the qExecs and more than one needs a snapshot!
 	 */
@@ -207,7 +207,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
 			 * unfortunately, the dtm issues a select for prepared xacts at the
 			 * beginning and this is before a snapshot has been set up, so we need
 			 * one for that but not for when we don't have a valid XID.
-			 * 
+			 *
 			 * but we CAN'T do this if an ABORT is in progress... instead we'll send
 			 * a NONE since the qExecs don't need the information to do a ROLLBACK.
 			 */
@@ -313,7 +313,7 @@ qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor,
  */
 static void
 cdbdisp_dtxParmsInit(struct CdbDispatcherState *ds,
-					 DispatchCommandDtxProtocolParms * pDtxProtocolParms)
+					 DispatchCommandDtxProtocolParms *pDtxProtocolParms)
 {
 	CdbDispatchCmdThreads *dThreads = ds->dispatchThreads;
 	int	i = 0;
