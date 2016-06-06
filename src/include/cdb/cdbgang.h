@@ -60,6 +60,9 @@ typedef struct Gang
 	MemoryContext perGangContext;
 } Gang;
 
+extern int qe_gang_id;
+
+
 extern Gang *allocateReaderGang(GangType type, char *portal_name);
 
 extern Gang *allocateWriterGang(void);
@@ -222,10 +225,6 @@ typedef struct Slice
 	DirectDispatchInfo directDispatch;
 
 	struct Gang *primaryGang;
-
-	/* tell dispatch agents which gang we're talking about.*/
-	int primary_gang_id;
-
 
 	/*
 	 * A list of CDBProcess nodes corresponding to the worker processes allocated
