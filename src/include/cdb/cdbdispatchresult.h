@@ -184,7 +184,6 @@ cdbdisp_resetResult(CdbDispatchResult *dispatchResult);
  */
 void
 cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
-                   int resultIndex, /* -1 if no PGresult */
                    CdbDispatchResult *dispatchResult);
 
 /*

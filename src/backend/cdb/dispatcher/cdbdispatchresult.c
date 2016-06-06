@@ -218,7 +218,6 @@ cdbdisp_resetResult(CdbDispatchResult *dispatchResult)
  */
 void
 cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
-				   int resultIndex,	/* -1 if no PGresult */
 				   CdbDispatchResult *dispatchResult)
 {
 	CdbDispatchResults *meleeResults = dispatchResult->meleeResults;
@@ -329,7 +328,7 @@ cdbdisp_appendMessage(CdbDispatchResult *dispatchResult,
 	/*
 	 * Remember first error.
 	 */
-	cdbdisp_seterrcode(errcode, -1, dispatchResult);
+	cdbdisp_seterrcode(errcode, dispatchResult);
 
 	/*
 	 * Allocate buffer if first message.

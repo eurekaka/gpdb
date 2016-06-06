@@ -76,14 +76,12 @@ cdbdisp_signalQE(SegmentDatabaseDescriptor *segdbDesc,
 static void *thread_DispatchCommand(void *arg);
 static void thread_DispatchOut(DispatchCommandParms *pParms);
 static void thread_DispatchWait(DispatchCommandParms *pParms);
-static void thread_DispatchWaitSingle(DispatchCommandParms *pParms);
 
 static void
-handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno);
+handlePollError(DispatchCommandParms *pParms, int sock_errno);
 
 static void
-handlePollTimeout(DispatchCommandParms *pParms,
-				  int db_count, int *timeoutCounter, bool useSampling);
+handlePollTimeout(DispatchCommandParms *pParms, int *timeoutCounter);
 
 static void
 DecrementRunningCount(void *arg);
@@ -309,18 +307,7 @@ CdbCheckDispatchResult_internal(struct CdbDispatcherState *ds,
 		pParms = &ds->dispatchThreads->dispatchCommandParmsAr[i];
 		Assert(pParms != NULL);
 
-		/*
-		 * Does caller want to stop short?
-		 */
-		switch (waitMode)
-		{
-			case DISPATCH_WAIT_CANCEL:
-			case DISPATCH_WAIT_FINISH:
-				pParms->waitMode = waitMode;
-				break;
-			default:
-				break;
-		}
+		pParms->waitMode = waitMode;
 
 		if (gp_connections_per_thread == 0)
 		{
@@ -522,8 +509,7 @@ static void
 thread_DispatchOut(DispatchCommandParms *pParms)
 {
 	CdbDispatchResult *dispatchResult;
-	int	i,
-		db_count = pParms->db_count;
+	int	i, db_count = pParms->db_count;
 
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
@@ -572,10 +558,9 @@ thread_DispatchOut(DispatchCommandParms *pParms)
 			 */
 			if (PQisBusy(dispatchResult->segdbDesc->conn))
 			{
-				write_log
-					("Trying to send to busy connection %s %d %d asyncStatus %d",
-					 dispatchResult->segdbDesc->whoami, i, db_count,
-					 dispatchResult->segdbDesc->conn->asyncStatus);
+				write_log("Trying to send to busy connection %s %d %d asyncStatus %d",
+						  dispatchResult->segdbDesc->whoami, i, db_count,
+						  dispatchResult->segdbDesc->conn->asyncStatus);
 			}
 
 			if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
@@ -584,10 +569,8 @@ thread_DispatchOut(DispatchCommandParms *pParms)
 
 				msg = PQerrorMessage(dispatchResult->segdbDesc->conn);
 
-				write_log
-					("Dispatcher noticed a problem before query transmit: %s (%s)",
-					 msg ? msg : "unknown error",
-					 dispatchResult->segdbDesc->whoami);
+				write_log("Dispatcher noticed a problem before query transmit: %s (%s)",
+						  msg ? msg : "unknown error", dispatchResult->segdbDesc->whoami);
 
 				/*
 				 * Save error info for later.
@@ -708,9 +691,7 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
-	int	i,
-		db_count = pParms->db_count;
-	int	timeoutCounter = 0;
+	int	i, timeoutCounter = 0;
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs.
@@ -722,11 +703,12 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 		int	n;
 		int	nfds = 0;
 		int	cur_fds_num = 0;
+		bool conn_broken = false;
 
 		/*
 		 * Which QEs are still running and could send results to us?
 		 */
-		for (i = 0; i < db_count; i++)
+		for (i = 0; i < pParms->db_count; i++)
 		{
 			dispatchResult = pParms->dispatchResultPtrArray[i];
 			segdbDesc = dispatchResult->segdbDesc;
@@ -748,11 +730,7 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 				nfds++;
 				Assert(nfds <= pParms->nfds);
 			}
-
-			/*
-			 * Lost the connection.
-			 */
-			else
+			else /* Lost the connection */
 			{
 				char *msg = PQerrorMessage(segdbDesc->conn);
 
@@ -762,7 +740,7 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
 									  ERRCODE_GP_INTERCONNECTION_ERROR,
 									  "Lost connection to %s. %s",
-									  segdbDesc->whoami, msg ? msg : "");
+									  segdbDesc->whoami, msg ? msg : "unknown error");
 
 				/*
 				 * Free the PGconn object.
@@ -770,13 +748,14 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 				PQfinish(segdbDesc->conn);
 				segdbDesc->conn = NULL;
 				dispatchResult->stillRunning = false;
+				conn_broken = true;
 			}
 		}
 
 		/*
 		 * Break out when no QEs still running.
 		 */
-		if (nfds <= 0)
+		if (nfds == 0 || conn_broken)
 			break;
 
 		/*
@@ -799,13 +778,13 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 			if (sock_errno == EINTR)
 				continue;
 
-			handlePollError(pParms, db_count, sock_errno);
+			handlePollError(pParms, sock_errno);
 			continue;
 		}
 
 		if (n == 0)
 		{
-			handlePollTimeout(pParms, db_count, &timeoutCounter, true);
+			handlePollTimeout(pParms, &timeoutCounter);
 			continue;
 		}
 
@@ -813,7 +792,7 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 		/*
 		 * We have data waiting on one or more of the connections.
 		 */
-		for (i = 0; i < db_count; i++)
+		for (i = 0; i < pParms->db_count; i++)
 		{
 			bool finished;
 
@@ -826,14 +805,11 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 			if (!dispatchResult->stillRunning)
 				continue;
 
-			if (DEBUG4 >= log_min_messages)
-				write_log("looking for results from %d of %d", i + 1,
-						  db_count);
-
 			/*
 			 * Skip this connection if it has no input available.
 			 */
 			sock = PQsocket(segdbDesc->conn);
+
 			if (sock >= 0)
 			{
 				/*
@@ -841,16 +817,12 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 				 * match method will use this assumtion.
 				 */
 				Assert(sock == pParms->fds[cur_fds_num].fd);
-			}
-			if (sock >= 0 && (sock == pParms->fds[cur_fds_num].fd))
-			{
+
 				cur_fds_num++;
 				if (!(pParms->fds[cur_fds_num - 1].revents & POLLIN))
 					continue;
 			}
 
-			if (DEBUG4 >= log_min_messages)
-				write_log("PQsocket says there are results from %d", i + 1);
 			/*
 			 * Receive and process results from this QE.
 			 */
@@ -861,10 +833,6 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 			 */
 			if (finished)
 			{
-				if (DEBUG4 >= log_min_messages)
-					write_log
-						("processResults says we are finished with %d: %s",
-						 i + 1, segdbDesc->whoami);
 				dispatchResult->stillRunning = false;
 				if (DEBUG1 >= log_min_messages)
 				{
@@ -874,195 +842,13 @@ thread_DispatchWait(DispatchCommandParms *pParms)
 					{
 						case 1:
 						case 2:
-							write_log
-								("duration to dispatch result received from thread %d (seg %d): %s ms",
-								 i + 1, dispatchResult->segdbDesc->segindex,
-								 msec_str);
+							write_log("duration to dispatch result received from thread %d (seg %d): %s ms",
+									  i + 1, dispatchResult->segdbDesc->segindex, msec_str);
 							break;
 					}
 				}
-				if (PQisBusy(dispatchResult->segdbDesc->conn))
-					write_log
-						("We thought we were done, because finished==true, but libpq says we are still busy");
-
-			}
-			else if (DEBUG4 >= log_min_messages)
-				write_log("processResults says we have more to do with %d: %s",
-						  i + 1, segdbDesc->whoami);
-		}
-	}
-}
-
-static void
-thread_DispatchWaitSingle(DispatchCommandParms *pParms)
-{
-	SegmentDatabaseDescriptor *segdbDesc;
-	CdbDispatchResult *dispatchResult;
-	char *msg = NULL;
-
-	/*
-	 * Assert() cannot be used in threads
-	 */
-	if (pParms->db_count != 1)
-		write_log("Bug... thread_dispatchWaitSingle called with db_count %d",
-				  pParms->db_count);
-
-	dispatchResult = pParms->dispatchResultPtrArray[0];
-	segdbDesc = dispatchResult->segdbDesc;
-
-	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
-	{
-		msg = PQerrorMessage(segdbDesc->conn);
-
-		/*
-		 * Save error info for later.
-		 */
-		cdbdisp_appendMessage(dispatchResult, DEBUG1,
-							  ERRCODE_GP_INTERCONNECTION_ERROR,
-							  "Lost connection to %s. %s",
-							  segdbDesc->whoami, msg ? msg : "");
-
-		/*
-		 * Free the PGconn object.
-		 */
-		PQfinish(segdbDesc->conn);
-		segdbDesc->conn = NULL;
-		dispatchResult->stillRunning = false;
-	}
-	else
-	{
-		PQsetnonblocking(segdbDesc->conn, FALSE);
-
-		for (;;)
-		{
-			PGresult *pRes;
-			ExecStatusType resultStatus;
-			int	resultIndex = cdbdisp_numPGresult(dispatchResult);
-
-			if (DEBUG4 >= log_min_messages)
-				write_log("PQgetResult, resultIndex = %d", resultIndex);
-			/*
-			 * Get one message.
-			 */
-			pRes = PQgetResult(segdbDesc->conn);
-
-			CollectQEWriterTransactionInformation(segdbDesc, dispatchResult);
-
-			/*
-			 * Command is complete when PGgetResult() returns NULL. It is critical
-			 * that for any connection that had an asynchronous command sent thru
-			 * it, we call PQgetResult until it returns NULL. Otherwise, the next
-			 * time a command is sent to that connection, it will return an error
-			 * that there's a command pending.
-			 */
-			if (!pRes)
-			{
-				if (DEBUG4 >= log_min_messages)
-				{
-					/*
-					 * Don't use elog, it's not thread-safe
-					 */
-					write_log("%s -> idle", segdbDesc->whoami);
-				}
-				break;
-			}
-
-			/*
-			 * Attach the PGresult object to the CdbDispatchResult object.
-			 */
-			cdbdisp_appendResult(dispatchResult, pRes);
-
-			/*
-			 * Did a command complete successfully?
-			 */
-			resultStatus = PQresultStatus(pRes);
-			if (resultStatus == PGRES_COMMAND_OK ||
-				resultStatus == PGRES_TUPLES_OK ||
-				resultStatus == PGRES_COPY_IN ||
-				resultStatus == PGRES_COPY_OUT)
-			{
-				/*
-				 * Save the index of the last successful PGresult. Can be given to
-				 * cdbdisp_getPGresult() to get tuple count, etc.
-				 */
-				dispatchResult->okindex = resultIndex;
-
-				if (DEBUG3 >= log_min_messages)
-				{
-					/*
-					 * Don't use elog, it's not thread-safe
-					 */
-					char *cmdStatus = PQcmdStatus(pRes);
-
-					write_log("%s -> ok %s",
-							  segdbDesc->whoami,
-							  cmdStatus ? cmdStatus : "(no cmdStatus)");
-				}
-
-				if (resultStatus == PGRES_COPY_IN ||
-					resultStatus == PGRES_COPY_OUT)
-					return;
-			}
-
-			/*
-			 * Note QE error. Cancel the whole statement if requested.
-			 */
-			else
-			{
-				char *sqlstate = PQresultErrorField(pRes, PG_DIAG_SQLSTATE);
-				int	errcode = 0;
-
-				msg = PQresultErrorMessage(pRes);
-
-				if (DEBUG2 >= log_min_messages)
-				{
-					/*
-					 * Don't use elog, it's not thread-safe
-					 */
-					write_log("%s -> %s %s %s",
-							  segdbDesc->whoami,
-							  PQresStatus(resultStatus),
-							  sqlstate ? sqlstate : "(no SQLSTATE)",
-							  msg ? msg : "");
-				}
-
-				/*
-				 * Convert SQLSTATE to an error code (ERRCODE_xxx). Use a generic
-				 * nonzero error code if no SQLSTATE.
-				 */
-				if (sqlstate && strlen(sqlstate) == 5)
-					errcode = sqlstate_to_errcode(sqlstate);
-
-				/*
-				 * Save first error code and the index of its PGresult buffer
-				 * entry.
-				 */
-				cdbdisp_seterrcode(errcode, resultIndex, dispatchResult);
 			}
 		}
-
-
-		if (DEBUG4 >= log_min_messages)
-			write_log("processResultsSingle says we are finished with : %s",
-					  segdbDesc->whoami);
-		dispatchResult->stillRunning = false;
-		if (DEBUG1 >= log_min_messages)
-		{
-			char msec_str[32];
-
-			switch (check_log_duration(msec_str, false))
-			{
-				case 1:
-				case 2:
-					write_log
-						("duration to dispatch result received from thread (seg %d): %s ms",
-						 dispatchResult->segdbDesc->segindex, msec_str);
-					break;
-			}
-		}
-		if (PQisBusy(dispatchResult->segdbDesc->conn))
-			write_log
-				("We thought we were done, because finished==true, but libpq says we are still busy");
 	}
 }
 
@@ -1113,13 +899,7 @@ thread_DispatchCommand(void *arg)
 	pthread_cleanup_push(DecrementRunningCount, NULL);
 	{
 		thread_DispatchOut(pParms);
-		/*
-		 * thread_DispatchWaitSingle might have a problem with interupts
-		 */
-		if (pParms->db_count == 1 && false)
-			thread_DispatchWaitSingle(pParms);
-		else
-			thread_DispatchWait(pParms);
+		thread_DispatchWait(pParms);
 	}
 	pthread_cleanup_pop(1);
 
@@ -1155,7 +935,7 @@ dispatchCommand(CdbDispatchResult *dispatchResult,
 
 		if (DEBUG3 >= log_min_messages)
 			write_log("PQsendMPPQuery_shared error %s %s",
-					  segdbDesc->whoami, msg ? msg : "");
+					  segdbDesc->whoami, msg ? msg : "unknown error");
 
 		/*
 		 * Note the error.
@@ -1163,7 +943,7 @@ dispatchCommand(CdbDispatchResult *dispatchResult,
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Command could not be sent to segment db %s; %s",
-							  segdbDesc->whoami, msg ? msg : "");
+							  segdbDesc->whoami, msg ? msg : "unknown error");
 		PQfinish(conn);
 		segdbDesc->conn = NULL;
 		dispatchResult->stillRunning = false;
@@ -1186,7 +966,7 @@ dispatchCommand(CdbDispatchResult *dispatchResult,
 }
 
 /*
- * Helper function to thread_DispatchCommand that handles errors that occur
+ * Helper function of thread_DispatchWait to handle errors that occur
  * during the poll() call.
  *
  * NOTE: since this is called via a thread, the same rules apply as to
@@ -1194,7 +974,7 @@ dispatchCommand(CdbDispatchResult *dispatchResult,
  *		 The cleanup of the connections will be performed by handlePollTimeout().
  */
 static void
-handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno)
+handlePollError(DispatchCommandParms *pParms, int sock_errno)
 {
 	int	i;
 	int	forceTimeoutCount;
@@ -1219,7 +999,7 @@ handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno)
 	 *
 	 * We should check a connection's integrity before calling PQisBusy().
 	 */
-	for (i = 0; i < db_count; i++)
+	for (i = 0; i < pParms->db_count; i++)
 	{
 		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
 
@@ -1234,22 +1014,19 @@ handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno)
 		 */
 		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
 		{
-			char *msg;
+			char *msg = NULL;
 
 			msg = PQerrorMessage(dispatchResult->segdbDesc->conn);
-			if (msg)
-				write_log("Dispatcher encountered connection error on %s: %s",
-						  dispatchResult->segdbDesc->whoami, msg);
 
-			write_log
-				("Dispatcher noticed bad connection in handlePollError()");
+			write_log("Dispatcher noticed bad connection in handlePollError() on %s: %s",
+					  dispatchResult->segdbDesc->whoami, msg ? msg : "unknown error");
 
 			/*
 			 * Save error info for later.
 			 */
 			cdbdisp_appendMessage(dispatchResult, LOG,
 								  ERRCODE_GP_INTERCONNECTION_ERROR,
-								  "Error after dispatch from %s: %s",
+								  "Dispatcher noticed bad connection in handlePollError() on %s: %s",
 								  dispatchResult->segdbDesc->whoami,
 								  msg ? msg : "unknown error");
 
@@ -1259,26 +1036,22 @@ handlePollError(DispatchCommandParms *pParms, int db_count, int sock_errno)
 		}
 	}
 
-	forceTimeoutCount = 60;		/* anything bigger than 30 */
-	handlePollTimeout(pParms, db_count, &forceTimeoutCount, false);
+	/* Check if we should send CANCEL to any QE */
+	forceTimeoutCount = 60; /* anything bigger than 30 */
+	handlePollTimeout(pParms, &forceTimeoutCount);
 
 	return;
-
-	/*
-	 * No point in trying to cancel the other QEs with select() broken.
-	 */
 }
 
 /*
- * Helper function to thread_DispatchCommand that handles timeouts that occur
+ * Helper function of thread_DispatchWait to handle timeouts that occur
  * during the poll() call.
  *
  * NOTE: since this is called via a thread, the same rules apply as to
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 static void
-handlePollTimeout(DispatchCommandParms *pParms,
-				  int db_count, int *timeoutCounter, bool useSampling)
+handlePollTimeout(DispatchCommandParms *pParms, int *timeoutCounter)
 {
 	CdbDispatchResult *dispatchResult;
 	CdbDispatchResults *meleeResults;
@@ -1288,13 +1061,11 @@ handlePollTimeout(DispatchCommandParms *pParms,
 	/*
 	 * Are there any QEs that should be canceled?
 	 */
-	for (i = 0; i < db_count; i++)
+	for (i = 0; i < pParms->db_count; i++)
 	{
-		DispatchWaitMode waitMode;
+		DispatchWaitMode waitMode = DISPATCH_WAIT_NONE;
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
-		if (dispatchResult == NULL)
-			continue;
 		segdbDesc = dispatchResult->segdbDesc;
 		meleeResults = dispatchResult->meleeResults;
 
@@ -1303,8 +1074,6 @@ handlePollTimeout(DispatchCommandParms *pParms,
 		 */
 		if (!dispatchResult->stillRunning)
 			continue;
-
-		waitMode = DISPATCH_WAIT_NONE;
 
 		/*
 		 * Send query finish to this QE if QD is already done.
@@ -1347,15 +1116,10 @@ handlePollTimeout(DispatchCommandParms *pParms,
 	{
 		*timeoutCounter = 0;
 
-		for (i = 0; i < db_count; i++)
+		for (i = 0; i < pParms->db_count; i++)
 		{
 			dispatchResult = pParms->dispatchResultPtrArray[i];
 			segdbDesc = dispatchResult->segdbDesc;
-
-			if (DEBUG5 >= log_min_messages)
-				write_log("checking status %d of %d %s stillRunning %d",
-						  i + 1, db_count, segdbDesc->whoami,
-						  dispatchResult->stillRunning);
 
 			/*
 			 * Skip if already finished or didn't dispatch.
@@ -1363,39 +1127,11 @@ handlePollTimeout(DispatchCommandParms *pParms,
 			if (!dispatchResult->stillRunning)
 				continue;
 
-			/*
-			 * If we hit the timeout, and the query has already been
-			 * cancelled we'll try to re-cancel here.
-			 *
-			 * XXX we may not need this anymore. It might be harmful
-			 * rather than helpful, as it creates another connection.
-			 */
-			if (dispatchResult->sentSignal == DISPATCH_WAIT_CANCEL &&
-				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
-			{
-				dispatchResult->sentSignal =
-					cdbdisp_signalQE(segdbDesc, DISPATCH_WAIT_CANCEL);
-			}
-
-			/*
-			 * Skip the entry db.
-			 */
-			if (segdbDesc->segindex < 0)
-				continue;
-
-			if (DEBUG5 >= log_min_messages)
-				write_log("testing connection %d of %d %s stillRunning %d",
-						  i + 1, db_count, segdbDesc->whoami,
-						  dispatchResult->stillRunning);
-
 			if (!FtsTestConnection(segdbDesc->segment_database_info, false))
 			{
-				/*
-				 * Note the error.
-				 */
 				cdbdisp_appendMessage(dispatchResult, DEBUG1,
 									  ERRCODE_GP_INTERCONNECTION_ERROR,
-									  "Lost connection to one or more segments - fault detector checking for segment failures. (%s)",
+									  "FTS detects connection lost to (%s) in handlePollTimeout()",
 									  segdbDesc->whoami);
 
 				/*
@@ -1406,13 +1142,12 @@ handlePollTimeout(DispatchCommandParms *pParms,
 				segdbDesc->conn = NULL;
 
 				/*
-				 * This connection is hosed.
+				 * This connection is lost.
 				 */
 				dispatchResult->stillRunning = false;
 			}
 		}
 	}
-
 }
 
 static int
@@ -1459,7 +1194,7 @@ shouldStillDispatchCommand(DispatchCommandParms *pParms,
 		cdbdisp_appendMessage(dispatchResult, LOG,
 							  ERRCODE_GP_INTERCONNECTION_ERROR,
 							  "Lost connection to %s. %s",
-							  segdbDesc->whoami, msg ? msg : "");
+							  segdbDesc->whoami, msg ? msg : "unknown error");
 
 		if (DEBUG4 >= log_min_messages)
 		{
@@ -1524,35 +1259,18 @@ processResults(CdbDispatchResult *dispatchResult)
 	char *msg;
 	int	rc;
 
-	/*
-	 * PQisBusy() has side-effects
-	 */
-	if (DEBUG5 >= log_min_messages)
-	{
-		write_log("processResults. isBusy = %d", PQisBusy(segdbDesc->conn));
-
-		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
 			goto connection_error;
-	}
 
 	/*
 	 * Receive input from QE.
 	 */
 	rc = PQconsumeInput(segdbDesc->conn);
 
-	/*
-	 * If PQconsumeInput fails, we're hosed.
-	 */
 	if (rc == 0)
-	{							/* handle PQconsumeInput error */
+	{
 		goto connection_error;
 	}
-
-	/*
-	 * PQisBusy() has side-effects
-	 */
-	if (DEBUG4 >= log_min_messages && PQisBusy(segdbDesc->conn))
-		write_log("PQisBusy");
 
 	/*
 	 * If we have received one or more complete messages, process them.
@@ -1572,16 +1290,13 @@ processResults(CdbDispatchResult *dispatchResult)
 		 * For example, cdbdisp_numPGresult() will return a completely
 		 * bogus value!
 		 */
-		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD
-			|| segdbDesc->conn->sock == -1)
+		if (PQstatus(segdbDesc->conn) == CONNECTION_BAD || segdbDesc->conn->sock == -1)
 		{
 			goto connection_error;
 		}
 
 		resultIndex = cdbdisp_numPGresult(dispatchResult);
 
-		if (DEBUG4 >= log_min_messages)
-			write_log("PQgetResult");
 		/*
 		 * Get one message.
 		 */
@@ -1607,7 +1322,7 @@ processResults(CdbDispatchResult *dispatchResult)
 			}
 			/* this is normal end of command */
 			return true;
-		} /* end of results */
+		}
 
 
 		/*
@@ -1619,9 +1334,11 @@ processResults(CdbDispatchResult *dispatchResult)
 		 * Did a command complete successfully?
 		 */
 		resultStatus = PQresultStatus(pRes);
+
 		if (resultStatus == PGRES_COMMAND_OK ||
 			resultStatus == PGRES_TUPLES_OK ||
-			resultStatus == PGRES_COPY_IN || resultStatus == PGRES_COPY_OUT)
+			resultStatus == PGRES_COPY_IN ||
+			resultStatus == PGRES_COPY_OUT)
 		{
 
 			/*
@@ -1630,15 +1347,14 @@ processResults(CdbDispatchResult *dispatchResult)
 			 */
 			dispatchResult->okindex = resultIndex;
 
-			if (DEBUG3 >= log_min_messages)
+			if (DEBUG4 >= log_min_messages)
 			{
 				/*
 				 * Don't use elog, it's not thread-safe
 				 */
 				char *cmdStatus = PQcmdStatus(pRes);
 
-				write_log("%s -> ok %s",
-						  segdbDesc->whoami,
+				write_log("%s -> ok %s", segdbDesc->whoami,
 						  cmdStatus ? cmdStatus : "(no cmdStatus)");
 			}
 
@@ -1652,7 +1368,6 @@ processResults(CdbDispatchResult *dispatchResult)
 				resultStatus == PGRES_COPY_OUT)
 				return true;
 		}
-
 		/*
 		 * Note QE error. Cancel the whole statement if requested.
 		 */
@@ -1664,7 +1379,7 @@ processResults(CdbDispatchResult *dispatchResult)
 
 			msg = PQresultErrorMessage(pRes);
 
-			if (DEBUG2 >= log_min_messages)
+			if (DEBUG4 >= log_min_messages)
 			{
 				/*
 				 * Don't use elog, it's not thread-safe
@@ -1684,10 +1399,9 @@ processResults(CdbDispatchResult *dispatchResult)
 				errcode = sqlstate_to_errcode(sqlstate);
 
 			/*
-			 * Save first error code and the index of its PGresult buffer
-			 * entry.
+			 * Save first error code.
 			 */
-			cdbdisp_seterrcode(errcode, resultIndex, dispatchResult);
+			cdbdisp_seterrcode(errcode, dispatchResult);
 		}
 	}
 
@@ -1696,9 +1410,8 @@ processResults(CdbDispatchResult *dispatchResult)
 connection_error:
 	msg = PQerrorMessage(segdbDesc->conn);
 
-	if (msg)
-		write_log("Dispatcher encountered connection error on %s: %s",
-				  segdbDesc->whoami, msg);
+	write_log("Dispatcher encountered connection error on %s: %s",
+			  segdbDesc->whoami, msg ? msg : "unknown error");
 
 	/*
 	 * Save error info for later.
