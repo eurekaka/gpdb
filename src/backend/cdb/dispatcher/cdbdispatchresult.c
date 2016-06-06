@@ -193,7 +193,6 @@ cdbdisp_resetResult(CdbDispatchResult *dispatchResult)
 	 * Reset summary indicators.
 	 */
 	dispatchResult->errcode = 0;
-	dispatchResult->errindex = -1;
 	dispatchResult->okindex = -1;
 
 	/*
@@ -245,8 +244,6 @@ cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
 	if (!dispatchResult->errcode)
 	{
 		dispatchResult->errcode = errcode;
-		if (resultIndex >= 0)
-			dispatchResult->errindex = resultIndex;
 	}
 
 	if (!meleeResults)
@@ -1007,7 +1004,6 @@ cdbdisp_snatchPGresults(CdbDispatchResult *dispatchResult,
 	 * Empty our PGresult array.
 	 */
 	resetPQExpBuffer(buf);
-	dispatchResult->errindex = -1;
 	dispatchResult->okindex = -1;
 
 	return nresults;
