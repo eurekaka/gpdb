@@ -673,7 +673,7 @@ DefineIndex(RangeVar *heapRelation,
          */
         if (stmt->concurrent)
         {
-			volatile struct CdbDispatcherState ds = {NULL, NULL};
+			volatile struct CdbDispatcherState ds = {NULL, NULL, NULL};
 
 			PG_TRY();
 			{
