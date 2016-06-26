@@ -389,8 +389,7 @@ InitProcess(void)
     if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
     MyProc->mppSessionId = gp_session_id;
-	Assert(gp_session_id > 0);
-    elog(DEBUG1,"InitProcess(): gp_session_id %d",gp_session_id);
+    elog(DEBUG1,"InitProcess(): gp_session_id %d, Gp_role %d",gp_session_id, Gp_role);
     
     MyProc->mppIsWriter = Gp_is_writer;
 
