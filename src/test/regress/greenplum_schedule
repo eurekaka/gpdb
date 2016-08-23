@@ -21,6 +21,7 @@ test: filter gpctas gpdist matrix toast sublink table_functions olap_setup compl
 test: indexjoin as_alias regex_gp gpparams with_clause transient_types
 
 test: dispatch
+test: gang_mgmt
 
 # 'segspace' relies on the segment spill space to be 0, and uses fault injectors
 # so it needs to be in a group by itself
