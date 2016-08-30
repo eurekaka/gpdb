@@ -384,7 +384,7 @@ void cdbconn_doConnect(SegmentDatabaseDescriptor *segdbDesc,
 		{
 			segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
 			appendPQExpBuffer(&segdbDesc->error_message,
-					"Internal error: No motion listener port (%s)", segdbDesc->whoami);
+					"Internal error: No motion listener port");
 
 			if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 				write_log("%s\n", segdbDesc->error_message.data);
