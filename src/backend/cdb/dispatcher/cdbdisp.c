@@ -24,6 +24,8 @@
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
 
+extern TimestampTz disp_start, disp_end;
+
 /*
  * default directed-dispatch parameters: don't direct anything.
  */
@@ -112,6 +114,13 @@ void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 					   DispatchWaitMode waitMode)
 {
+	TimestampTz check_start, check_end;
+
+	if (log_duration && disp_start != 0)
+	{
+		check_start = GetCurrentTimestamp();
+	}
+
 	PG_TRY();
 	{
 		(pDispatchFuncs->checkResults)(ds, waitMode);
@@ -140,6 +149,24 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds,
 						(errmsg("duration to dispatch result received from all QEs: %s ms", msec_str)));
 				break;
 		}
+	}
+
+	if (log_duration && disp_start != 0)
+	{
+		check_end = GetCurrentTimestamp();
+
+		long total_disp_usecs, qd_exec_usecs, tmp_secs;
+		int tmp_usecs;
+
+		TimestampDifference(disp_start, check_end, &tmp_secs, &tmp_usecs);
+		total_disp_usecs = tmp_secs * 1000 * 1000 + tmp_usecs;
+		elog(LOG, "PF_DEBUG: total dispatch time %ld usecs", total_disp_usecs);
+
+		TimestampDifference(disp_end, check_start, &tmp_secs, &tmp_usecs);
+		qd_exec_usecs = tmp_secs * 1000 * 1000 + tmp_usecs;
+		elog(LOG, "PF_DEBUG: time spent on QD execution %ld usecs", qd_exec_usecs);
+
+		disp_start = 0;
 	}
 }
 

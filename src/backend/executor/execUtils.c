@@ -1686,6 +1686,12 @@ static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceR
 void
 AssignGangs(QueryDesc *queryDesc)
 {
+	TimestampTz assign_start, assign_end;
+	if (log_duration)
+	{
+		assign_start = GetCurrentTimestamp();
+	}
+
 	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
 	ListCell   *cell;
@@ -1785,6 +1791,15 @@ AssignGangs(QueryDesc *queryDesc)
 	if (inv.vec1gangs_entrydb_reader != NULL)
 		pfree(inv.vec1gangs_entrydb_reader);
 
+	if (log_duration)
+	{
+		assign_end = GetCurrentTimestamp();
+		long assign_time_usecs, tmp_secs;
+		int tmp_usecs;
+		TimestampDifference(assign_start, assign_end, &tmp_secs, &tmp_usecs);
+		assign_time_usecs = tmp_secs * 1000 * 1000 + tmp_usecs;
+		elog(LOG, "PF_DEBUG: assign gang time %ld usecs", assign_time_usecs);
+	}
 }
 
 void

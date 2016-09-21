@@ -33,6 +33,8 @@
 
 extern bool Test_print_direct_dispatch_info;
 
+TimestampTz disp_start = 0, disp_end;
+
 /*
  * We need an array describing the relationship between a slice and
  * the number of "child" slices which depend on it.
@@ -170,6 +172,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 bool planRequiresTxn,
 					 bool cancelOnError, struct CdbDispatcherState *ds)
 {
+	if (log_duration)
+	{
+		disp_start = GetCurrentTimestamp();
+	}
+
 	SliceTable *sliceTbl;
 	int oldLocalSlice;
 	PlannedStmt *stmt;
@@ -272,6 +279,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	cdbdisp_destroyQueryParms(pQueryParms);
 
 	sliceTbl->localSlice = oldLocalSlice;
+
+	if (log_duration)
+	{
+		disp_end = GetCurrentTimestamp();
+	}
 }
 
 /*

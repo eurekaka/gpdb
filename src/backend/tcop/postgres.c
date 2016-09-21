@@ -1420,12 +1420,12 @@ exec_mpp_query(const char *query_string,
 	{
 		case 1:
 			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str),
+					(errmsg("PF_DEBUG: duration: %s ms", msec_str),
 					 errhidestmt(true)));
 			break;
 		case 2:
 			ereport(LOG,
-					(errmsg("duration: %s ms  statement: %s",
+					(errmsg("PF_DEBUG: duration: %s ms  statement: %s",
 							msec_str, query_string),
 					 errhidestmt(true)));
 			break;
@@ -1858,20 +1858,23 @@ exec_simple_query(const char *query_string, const char *seqServerHost, int seqSe
 	/*
 	 * Emit duration logging if appropriate.
 	 */
-	switch (check_log_duration(msec_str, was_logged))
+	if (DEBUG1 >= log_min_messages)
 	{
-		case 1:
-			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str),
-					 errhidestmt(true)));
-			break;
-		case 2:
-			ereport(LOG,
-					(errmsg("duration: %s ms  statement: %s",
-							msec_str, query_string),
-					 errdetail_execute(parsetree_list),
-					 errhidestmt(true)));
-			break;
+		switch (check_log_duration(msec_str, was_logged))
+		{
+			case 1:
+				ereport(LOG,
+						(errmsg("duration: %s ms", msec_str),
+						 errhidestmt(true)));
+				break;
+			case 2:
+				ereport(LOG,
+						(errmsg("duration: %s ms  statement: %s",
+								msec_str, query_string),
+						 errdetail_execute(parsetree_list),
+						 errhidestmt(true)));
+				break;
+		}
 	}
 
 	if (save_log_statement_stats)
