@@ -941,7 +941,7 @@ GetResQueueIdForName(char	*name)
 	HeapTuple	tuple;
 	Oid			queueid;
 
-	rel = heap_open(ResQueueRelationId, AccessShareLock);
+	rel = heap_open(ResQueueRelationId, ShareLock);
 
 	/* SELECT oid FROM pg_resqueue WHERE rsqname = :1 */
 	ScanKeyInit(&scankey,
@@ -958,7 +958,7 @@ GetResQueueIdForName(char	*name)
 		queueid = InvalidOid;
 
 	systable_endscan(scan);
-	heap_close(rel, AccessShareLock);
+	heap_close(rel, ShareLock);
 
 	return queueid;
 }
