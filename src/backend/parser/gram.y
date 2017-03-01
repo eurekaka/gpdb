@@ -188,7 +188,7 @@ static Node *makeIsNotDistinctFromNode(Node *expr, int position);
 		CreateAssertStmt CreateTrigStmt 
 		CreateUserStmt CreateRoleStmt
 		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt DoStmt
-		DropGroupStmt DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropQueueStmt DropStmt
+		DropGroupStmt DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropQueueStmt DropResGroupStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
 		DropUserStmt DropdbStmt
 		ExplainStmt
@@ -1080,6 +1080,7 @@ stmt :
 			| DropOwnedStmt
 			| DropPLangStmt
 			| DropQueueStmt
+			| DropResGroupStmt
 			| DropRuleStmt
 			| DropStmt
 			| DropTrigStmt
@@ -1256,6 +1257,21 @@ DropQueueStmt:
 				 {
 					DropQueueStmt *n = makeNode(DropQueueStmt);
 					n->queue = $4;
+					$$ = (Node *)n;
+				 }
+		;
+
+/*****************************************************************************
+ *
+ * Drop a GPDB Resource Group
+ *
+ *****************************************************************************/
+
+DropResGroupStmt:
+			DROP RESOURCE GROUP_P QueueId
+				 {
+					DropResGroupStmt *n = makeNode(DropResGroupStmt);
+					n->resgroup = $4;
 					$$ = (Node *)n;
 				 }
 		;

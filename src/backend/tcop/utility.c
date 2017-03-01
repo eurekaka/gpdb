@@ -41,6 +41,7 @@
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
 #include "commands/queue.h"
+#include "commands/resgroup.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
 #include "commands/sequence.h"
@@ -1736,6 +1737,13 @@ ProcessUtility(Node *parsetree,
 			break;
 
 			/*
+			 * ********************* RESOURCE GROUP statements ****
+			 */
+		case T_DropResGroupStmt:
+			DropResGroup((DropResGroupStmt *) parsetree);
+			break;
+
+			/*
 			 * ******************************** ROLE statements ****
 			 */
 		case T_CreateRoleStmt:
@@ -2615,6 +2623,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_DropQueueStmt:
 			tag = "DROP QUEUE";
+			break;
+
+		case T_DropResGroupStmt:
+			tag = "DROP RESOURCE GROUP";
 			break;
 
 		case T_CreateRoleStmt:
