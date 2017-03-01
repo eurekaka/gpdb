@@ -671,12 +671,14 @@ AlterRole(AlterRoleStmt *stmt)
 	int			canlogin = -1;	/* Can this user login? */
 	int			connlimit = -1; /* maximum connections allowed */
 	char	   *resqueue = NULL;	/* resource queue for this role */
+	char	   *resgroup = NULL;	/* resource group for this role */
 	List	   *rolemembers = NIL;	/* roles to be added/removed */
 	List	   *exttabcreate = NIL;	/* external table create privileges being added  */
 	List	   *exttabnocreate = NIL;	/* external table create privileges being removed */
 	char	   *validUntil = NULL;		/* time the login is valid until */
 	DefElem    *dpassword = NULL;
 	DefElem    *dresqueue = NULL;
+	DefElem    *dresgroup = NULL;
 	DefElem    *dissuper = NULL;
 	DefElem    *dinherit = NULL;
 	DefElem    *dcreaterole = NULL;
@@ -816,6 +818,15 @@ AlterRole(AlterRoleStmt *stmt)
 			dresqueue = defel;
 			if (1 == numopts) alter_subtype = "RESOURCE QUEUE";
 		}
+		else if (strcmp(defel->defname, "resourceGroup") == 0)
+		{
+			if (dresgroup)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dresgroup = defel;
+			if (1 == numopts) alter_subtype = "RESOURCE GROUP";
+		}
 		else if (strcmp(defel->defname, "exttabauth") == 0)
 		{
 			extAuthPair *extauth = (extAuthPair *) palloc0 (2 * sizeof(char *));
@@ -879,6 +890,8 @@ AlterRole(AlterRoleStmt *stmt)
 		validUntil = strVal(dvalidUntil->arg);
 	if (dresqueue)
 		resqueue = strVal(linitial((List *) dresqueue->arg));
+	if (dresgroup)
+		resgroup = strVal(linitial((List *) dresgroup->arg));
 
 	/*
 	 * Scan the pg_authid relation to be certain the user exists.
@@ -1113,6 +1126,56 @@ AlterRole(AlterRoleStmt *stmt)
 			if (!bWas_super)
 				ereport(WARNING,
 						(errmsg("resource scheduling is disabled"),
+						 errhint("To enable set resource_scheduler=on")));
+		}
+	}
+
+	/* resource group */
+	if (resgroup)
+	{
+		if (!strcmp(resgroup, "none"))
+		{
+			if (bWas_super)
+				resgroup = pstrdup("admin_group");
+			else
+				resgroup = pstrdup("default_group");
+
+			if (Gp_role == GP_ROLE_DISPATCH)
+				ereport(NOTICE,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("resource group required -- "
+								"using default resource group \"%s\"",
+								resgroup)));
+		}
+
+		if (!strcmp(resgroup, "none"))
+		{
+			new_record_nulls[Anum_pg_authid_rolresgroup - 1] = true;
+		}
+		else
+		{
+			Oid			rsgid;
+
+			rsgid = GetResGroupIdForName(resgroup, ShareLock);
+			if (rsgid == InvalidOid)
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("resource group \"%s\" does not exist",
+							resgroup)));
+			else if (rsgid == ADMINRESGROUP_OID && !bWas_super)
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("only super user can be assigned to admin resgroup")));
+			new_record[Anum_pg_authid_rolresgroup - 1] =
+				ObjectIdGetDatum(rsgid);
+		}
+		new_record_repl[Anum_pg_authid_rolresgroup - 1] = true;
+
+		if (!ResourceScheduler)
+		{
+			if (!bWas_super)
+				ereport(WARNING,
+						(errmsg("resource group is disabled"),
 						 errhint("To enable set resource_scheduler=on")));
 		}
 	}
