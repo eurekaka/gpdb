@@ -183,4 +183,8 @@ extern bool isSockAlive(int sock);
 	if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG) write_log(__VA_ARGS__); \
     } while(false);
 
+#define ELOG_RESGROUP_DEBUG(...)
+//do {
+	    //   if (Debug_resource_group) elog(LOG, __VA_ARGS__); 
+//	    } while(false);
 #endif   /* CDBUTIL_H */

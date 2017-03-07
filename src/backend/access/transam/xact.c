@@ -56,6 +56,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
+#include "utils/resgroup.h"
 #include "utils/sharedsnapshot.h"
 #include "access/distributedlog.h"
 #include "access/clog.h"
@@ -2873,6 +2874,9 @@ StartTransaction(void)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
 
+	if (Gp_role == GP_ROLE_DISPATCH && 1)
+		ResGroupSlotAcquire(GetResGroupId());
+
 	/*
 	 * set the current transaction state information appropriately during
 	 * start processing
@@ -3640,6 +3644,9 @@ CommitTransaction(void)
 	RESUME_INTERRUPTS();
 
 	freeGangsForPortal(NULL);
+
+	if (Gp_role == GP_ROLE_DISPATCH && 1)
+		ResGroupSlotRelease(GetResGroupId());
 }
 
 
@@ -4193,6 +4200,9 @@ CleanupTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	finishDistributedTransactionContext("CleanupTransaction", true);
+
+	if (Gp_role == GP_ROLE_DISPATCH && 1)
+		ResGroupSlotRelease(GetResGroupId());
 
 }
 

@@ -119,6 +119,7 @@ struct PGPROC
 	bool		lwExclusive;	/* true if waiting for exclusive access */
 	struct PGPROC *lwWaitLink;	/* next waiter for same LW lock */
 
+	bool		resWaiting;
 	/* Info about lock the process is currently waiting for, if any. */
 	/* waitLock and waitProcLock are NULL if not currently waiting. */
 	LOCK	   *waitLock;		/* Lock object we're sleeping on ... */

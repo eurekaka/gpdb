@@ -4625,6 +4625,8 @@ PostgresMain(int argc, char *argv[],
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && !am_walsender)
 		InitResQueues();
 
+	if (Gp_role == GP_ROLE_DISPATCH && 1 && !am_walsender)
+		InitResGroups();
 	/*
 	 * Now all GUC states are fully set up.  Report them to client if
 	 * appropriate.

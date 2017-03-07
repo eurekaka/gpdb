@@ -563,6 +563,11 @@ InitializeSessionUserId(const char *rolename)
 		SetResQueueId();
 	}
 
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && 1)
+	{
+		SetResGroupId();
+	}
+
 	/* Record username and superuser status as GUC settings too */
 	SetConfigOption("session_authorization", rolename,
 					PGC_BACKEND, PGC_S_OVERRIDE);
@@ -626,6 +631,11 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 		SetResQueueId();
 	}
 
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && 1)
+	{
+		SetResGroupId();
+	}
+
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
@@ -687,6 +697,11 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && ResourceScheduler)
 	{
 		SetResQueueId();
+	}
+
+	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && 1)
+	{
+		SetResGroupId();
 	}
 
 	SetConfigOption("is_superuser",

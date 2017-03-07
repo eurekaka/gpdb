@@ -55,6 +55,7 @@
 #include "storage/sinvaladt.h"
 #include "storage/spin.h"
 #include "utils/resscheduler.h"
+#include "utils/resgroup.h"
 #include "utils/faultinjector.h"
 #include "utils/sharedsnapshot.h"
 #include "utils/simex.h"
@@ -330,6 +331,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		InitResPortalIncrementHash();
 	}
 
+
+	if (Gp_role == GP_ROLE_DISPATCH && 1)
+	{
+		ResGroupControlInit();
+	}
 
 	if (!IsUnderPostmaster)
 	{
