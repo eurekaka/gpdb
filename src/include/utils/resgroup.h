@@ -21,6 +21,7 @@
 
 /* GUC */
 extern int MaxResourceGroups;
+extern Oid	CurrentGroupId;
 
 /*
  * Data structures

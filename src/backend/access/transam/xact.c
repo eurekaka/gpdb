@@ -2875,7 +2875,10 @@ StartTransaction(void)
 			 TransStateAsString(s->state));
 
 	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
-		ResGroupSlotAcquire(GetResGroupId());
+	{
+		CurrentGroupId = GetResGroupId();
+		ResGroupSlotAcquire(CurrentGroupId);
+	}
 
 	/*
 	 * set the current transaction state information appropriately during
@@ -3646,7 +3649,7 @@ CommitTransaction(void)
 	freeGangsForPortal(NULL);
 
 	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
-		ResGroupSlotRelease(GetResGroupId());
+		ResGroupSlotRelease(CurrentGroupId);
 }
 
 
@@ -4202,7 +4205,7 @@ CleanupTransaction(void)
 	finishDistributedTransactionContext("CleanupTransaction", true);
 
 	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
-		ResGroupSlotRelease(GetResGroupId());
+		ResGroupSlotRelease(CurrentGroupId);
 
 }
 

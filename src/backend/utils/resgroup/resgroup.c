@@ -44,6 +44,7 @@ int						MaxResourceGroups;
 
 static ResGroupControl *pResGroupControl;
 static Oid				MyGroupId;
+Oid						CurrentGroupId;
 
 Datum
 pg_resgroup_get_status_kv(PG_FUNCTION_ARGS)
