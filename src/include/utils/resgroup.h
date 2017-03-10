@@ -16,8 +16,8 @@
 #ifndef RESGROUP_H
 #define RESGROUP_H
 
-#include "storage/lock.h"
-#include "cdb/cdbvars.h"
+//#include "storage/lock.h"
+//#include "cdb/cdbvars.h"
 
 /* GUC */
 extern int MaxResourceGroups;
@@ -61,5 +61,7 @@ extern bool ResGroupCreate(Oid groupId);
 
 extern void SetResGroupId(void);
 extern Oid	GetResGroupId(void);
+
+extern Size ResGroupShmemSize(void);
 
 #endif   /* RESGROUP_H */

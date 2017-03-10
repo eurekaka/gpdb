@@ -146,6 +146,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 				size = add_size(size, ResSchedulerShmemSize());
 				size = add_size(size, ResPortalIncrementShmemSize());				
 			}
+
+			if (1)
+			{
+				size = add_size(size, ResGroupShmemSize());
+			}
 		}
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());

@@ -170,6 +170,7 @@ ResGroupControlInit(void)
 	 * postmaster only
 	 */
 	pResGroupControl->htblLoaded = false;
+	return;
 
 error_out:
 	ereport(FATAL,
@@ -375,6 +376,21 @@ ResGroupSlotAcquire(Oid groupId)
 	ResGroup	group;
 	Form_pg_resgroupcapability	capability;
 
+	if (groupId == ADMINRESGROUP_OID)
+		return;
+
+	/*
+	 * to cave the code of cache part, we provide a resource owner here if no
+	 * existing
+	 */
+	ResourceOwner owner = NULL;
+
+	if (CurrentResourceOwner == NULL)
+	{
+		owner = ResourceOwnerCreate(NULL, "ResGroupSlotAcquire");
+		CurrentResourceOwner = owner;
+	}
+
 	Relation relResGroupCapability = heap_open(ResGroupCapabilityRelationId, AccessShareLock);
 
 	ScanKeyInit(&key[0],
@@ -396,6 +412,13 @@ ResGroupSlotAcquire(Oid groupId)
 	{
 		systable_endscan(sscan);
 		heap_close(relResGroupCapability, AccessShareLock);
+
+		if (owner)
+		{
+			CurrentResourceOwner = NULL;
+			ResourceOwnerDelete(owner);
+		}
+
 		/*TODO error code*/
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -411,6 +434,12 @@ ResGroupSlotAcquire(Oid groupId)
 	concurrencyLimit= atoi(valueStr);
 	systable_endscan(sscan);
 	heap_close(relResGroupCapability, AccessShareLock);
+
+	if (owner)
+	{
+		CurrentResourceOwner = NULL;
+		ResourceOwnerDelete(owner);
+	}
 
 	LWLockAcquire(ResGroupLock, LW_EXCLUSIVE);
 	group = ResGroupHashFind(groupId);
@@ -442,14 +471,23 @@ ResGroupSlotRelease(Oid groupId)
 	PROC_QUEUE	*waitQueue;
 	PGPROC		*waitProc;
 
+	if (groupId == ADMINRESGROUP_OID)
+		return;
+
 	LWLockAcquire(ResGroupLock, LW_EXCLUSIVE);
 	group = ResGroupHashFind(groupId);
 	waitQueue = &(group->waitProcs);
 	
 	if (waitQueue->size == 0)
 	{
-		Assert(waitQueue->links.next == INVALID_OFFSET &&
-			   waitQueue->links.prev == INVALID_OFFSET);
+		Assert(waitQueue->links.next == MAKE_OFFSET(&waitQueue->links) &&
+			   waitQueue->links.prev == MAKE_OFFSET(&waitQueue->links));
+
+		if (group->concurrency == 0)
+		{
+			elog(PANIC, "aaa");
+		}
+
 		group->concurrency --;
 		LWLockRelease(ResGroupLock);
 		return;
@@ -517,4 +555,25 @@ Oid
 GetResGroupId(void)
 {
 	return MyGroupId;
+}
+
+/*
+ * ResGroupShmemSize -- estimate size the resource group structures will need in
+ *	shared memory.
+ */
+Size
+ResGroupShmemSize(void)
+{
+	Size		size;
+
+	/* The hash of groups. */
+	size = hash_estimate_size(MaxResourceGroups, sizeof(ResGroupData));
+
+	/* The control structure. */
+	size = add_size(size, sizeof(ResGroupControl));
+
+	/* Add a safety margin */
+	size = add_size(size, size / 10);
+
+	return size;
 }

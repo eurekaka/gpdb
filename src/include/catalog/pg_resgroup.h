@@ -103,7 +103,7 @@ typedef FormData_pg_resgroupcapability *Form_pg_resgroupcapability;
 #define Anum_pg_resgroupcapability_value	3
 #define Anum_pg_resgroupcapability_proposed	4
 
-DATA(insert ( 6437, 1, 20, 20 ));
+DATA(insert ( 6437, 1, 2, 2 ));
 
 DATA(insert ( 6437, 2, 0.3, 0.3 ));
 

@@ -2874,7 +2874,7 @@ StartTransaction(void)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
 
-	if (Gp_role == GP_ROLE_DISPATCH && 1)
+	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
 		ResGroupSlotAcquire(GetResGroupId());
 
 	/*
@@ -3645,7 +3645,7 @@ CommitTransaction(void)
 
 	freeGangsForPortal(NULL);
 
-	if (Gp_role == GP_ROLE_DISPATCH && 1)
+	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
 		ResGroupSlotRelease(GetResGroupId());
 }
 
@@ -4201,7 +4201,7 @@ CleanupTransaction(void)
 
 	finishDistributedTransactionContext("CleanupTransaction", true);
 
-	if (Gp_role == GP_ROLE_DISPATCH && 1)
+	if (Gp_role == GP_ROLE_DISPATCH && 1 && IsNormalProcessingMode())
 		ResGroupSlotRelease(GetResGroupId());
 
 }
