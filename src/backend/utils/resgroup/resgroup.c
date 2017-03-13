@@ -27,8 +27,7 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "pgstat.h"
-#include "storage/lock.h"
-#include "storage/lmgr.h"
+#include "storage/latch.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/memutils.h"
@@ -341,7 +340,6 @@ ResWaitOnSem(ResGroup group)
 {
 	PGPROC *proc = MyProc, *headProc;
 	PROC_QUEUE *waitQueue;
-	int extraWaits = 0;
 
 	proc->resWaiting = true;
 
@@ -355,15 +353,13 @@ ResWaitOnSem(ResGroup group)
 
 	for (;;)
 	{
-		PGSemaphoreLock(&proc->sem, false);
+		ResetLatch(&proc->procLatch);
 
+		// XXX locking?
 		if (!proc->resWaiting)
 			break;
-		extraWaits ++;
+		WaitLatch(&proc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1);
 	}
-
-	while (extraWaits-- > 0)
-		PGSemaphoreUnlock(&proc->sem);	
 }
 
 void
@@ -501,7 +497,7 @@ ResGroupSlotRelease(Oid groupId)
 	LWLockRelease(ResGroupLock);
 
 	waitProc->resWaiting = false;
-	PGSemaphoreUnlock(&waitProc->sem);
+	SetLatch(&waitProc->procLatch);
 }
 
 /*
