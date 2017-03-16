@@ -3375,7 +3375,7 @@ CommitTransaction(void)
 	AtEOXact_SharedSnapshot();
 
 	/* Perform any Resource Scheduler commit procesing. */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && IsResQueueEnabled())
 		AtCommit_ResScheduler();
 
 	/* Perform any AO table commit processing */
@@ -4014,7 +4014,7 @@ AbortTransaction(void)
 	AtEOXact_SharedSnapshot();
 
 	/* Perform any Resource Scheduler abort procesing. */
-	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+	if (Gp_role == GP_ROLE_DISPATCH && IsResQueueEnabled())
 		AtAbort_ResScheduler();
 		
 	/* Perform any AO table abort processing */
