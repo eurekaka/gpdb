@@ -144,6 +144,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, ResSchedulerShmemSize());
 			size = add_size(size, ResPortalIncrementShmemSize());
 		}
+		else if (IsResQueueEnabled())
+			size = add_size(size, ResGroupShmemSize());
+
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());
 		size = add_size(size, DistributedLog_ShmemSize());
@@ -241,6 +244,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
 
+		/* allocate semaphores for resource group on master */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			numSemas += MaxResourceGroups;
+
 		if (GPAreFileReplicationStructuresRequired()) 
 		{
 			numSemas += FileRepSemas();
@@ -326,7 +333,8 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		InitResScheduler();
 		InitResPortalIncrementHash();
 	}
-
+	else if (IsResGroupEnabled() && !IsUnderPostmaster)
+		ResGroupControlInit();
 
 	if (!IsUnderPostmaster)
 	{

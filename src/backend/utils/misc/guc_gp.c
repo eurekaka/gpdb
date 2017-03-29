@@ -38,6 +38,7 @@
 #include "utils/guc_tables.h"
 #include "utils/inval.h"
 #include "utils/resscheduler.h"
+#include "utils/resgroup.h"
 #include "utils/vmem_tracker.h"
 
 #ifdef USE_CONNECTEMC
@@ -165,6 +166,7 @@ int			Debug_appendonly_bad_header_print_level = ERROR;
 bool		Debug_appendonly_print_datumstream = false;
 bool		Debug_appendonly_print_visimap = false;
 bool		Debug_appendonly_print_compaction = false;
+bool		Debug_resource_group = false;
 bool		gp_crash_recovery_abort_suppress_fatal = false;
 bool		gp_persistent_statechange_suppress_error = false;
 bool		Debug_bitmap_print_insert = false;
@@ -1305,7 +1307,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enable resource scheduling."),
 			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE
 		},
 		&ResourceScheduler,
 		true, NULL, NULL
@@ -2135,6 +2137,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_filerep_memory_log_flush,
+		false, NULL, NULL
+	},
+
+	{
+		{"debug_resource_group", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prints resource groups debug logs."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_resource_group,
 		false, NULL, NULL
 	},
 
@@ -3617,6 +3629,15 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&MaxResourceQueues,
 		9, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"max_resource_groups", PGC_POSTMASTER, RESOURCES_MGM,
+			gettext_noop("Maximum number of resource groups."),
+			NULL
+		},
+		&MaxResourceGroups,
+		9, 0, INT_MAX, gpvars_assign_max_resource_groups, NULL
 	},
 
 	{

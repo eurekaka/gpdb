@@ -56,6 +56,7 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
+#include "utils/resgroup.h"
 #include "utils/sharedsnapshot.h"
 #include "access/distributedlog.h"
 #include "access/clog.h"
@@ -388,6 +389,13 @@ IsAbortInProgress(void)
 	return (s->state == TRANS_ABORT);
 }
 
+bool
+IsTransactionPreparing(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	return (s->state == TRANS_PREPARE);
+}
 /*
  *	IsAbortedTransactionBlockState
  *
@@ -2873,6 +2881,10 @@ StartTransaction(void)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
 
+	/* Acquire a resource group slot at the beginning of a transaction */
+	if (Gp_role == GP_ROLE_DISPATCH && IsResGroupEnabled() && IsNormalProcessingMode())
+		ResGroupSlotAcquire();
+
 	/*
 	 * set the current transaction state information appropriately during
 	 * start processing
@@ -3645,6 +3657,10 @@ CommitTransaction(void)
 	RESUME_INTERRUPTS();
 
 	freeGangsForPortal(NULL);
+
+	/* Release resource group slot at the end of a transaction */
+	if (Gp_role == GP_ROLE_DISPATCH && IsResGroupEnabled() && IsNormalProcessingMode())
+		ResGroupSlotRelease();
 }
 
 
@@ -4199,6 +4215,9 @@ CleanupTransaction(void)
 
 	finishDistributedTransactionContext("CleanupTransaction", true);
 
+	/* Release resource group slot at the end of a transaction */
+	if (Gp_role == GP_ROLE_DISPATCH && IsResGroupEnabled() && IsNormalProcessingMode())
+		ResGroupSlotRelease();
 }
 
 /*

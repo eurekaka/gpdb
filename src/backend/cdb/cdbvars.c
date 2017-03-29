@@ -26,6 +26,7 @@
 #include "libpq/libpq-be.h"
 #include "utils/memutils.h"
 #include "utils/resource_manager.h"
+#include "utils/resgroup.h"
 #include "storage/bfz.h"
 #include "storage/proc.h"
 #include "cdb/memquota.h"
@@ -65,6 +66,8 @@ bool		Debug_print_prelim_plan;	/* Shall we log argument of
 										 * cdbparallelize? */
 
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
+
+bool		Debug_resource_group;	/* Shall we log the resource group? */
 
 bool		gp_backup_directIO = false; /* disable\enable direct I/O dump */
 
@@ -1232,6 +1235,25 @@ gpvars_show_gp_resource_manager_policy(void)
 			return "unknown";
 	}
 }
+
+/*
+ * gpvars_assign_max_resource_groups
+ */
+bool
+gpvars_assign_max_resource_groups(int newval, bool doit, GucSource source __attribute__((unused)))
+{
+	if (newval > MaxConnections)
+		elog(ERROR, "Invalid input for max_resource_groups. Must be no larger than max_connections(%d).", MaxConnections);
+
+	if (doit)
+	{
+		MaxResourceGroups = newval;
+	}
+
+	return true;
+}
+
+
 /*
  * gpvars_assign_gp_resqueue_memory_policy
  * gpvars_show_gp_resqueue_memory_policy
